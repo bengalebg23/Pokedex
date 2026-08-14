@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<!--
+  The Full Index — National Pokédex tracker
+  VERSION: 1.4.0
+
+  Changelog:
+  v1.0.0 — Full species index with type and number-range filters
+  v1.1.0 — Click-to-mark-caught, caught/not-caught filter, stamp visual
+  v1.2.0 — Progress counter (overall + per-generation) with count/% toggle;
+           export/import data file so caught progress survives HTML updates
+  v1.3.0 — Optional auto-backup: downloads a data file ~10s after the last
+           change, and again on tab close/background. Best-effort — mobile
+           browsers require a user gesture for some downloads, so this can't
+           be 100% silent on every device.
+  v1.4.0 — Storage shim: works standalone when hosted (e.g. GitHub Pages)
+           using localStorage, not just inside Claude's artifact preview.
+           This is the version to host for a stable home-screen link.
+  v1.5.0 — Official artwork sprite shown on every species card, loaded
+           lazily and falling back to a smaller sprite if artwork is
+           missing for that number.
+  v1.6.0 — Subtle "i" info button on each card, opening a pop-out with
+           height, weight, abilities, and base XP (fetched on demand
+           and cached, so it only loads details you actually ask for).
+  v1.7.0 — Tap the artwork in the info pop-out to confirm a catch (or
+           un-mark it) — a deliberate action separate from tapping the
+           card itself, with a hint label and stamp for feedback.
+  v1.8.0 — Tapping the artwork now asks "Mark X as caught?" before it
+           actually changes anything, so browsing the info pop-out
+           can't accidentally flip caught status on a stray tap.
+  v1.9.0 — That same confirmation now happens right on the main grid:
+           tapping a card asks "Mark X as caught?" before anything
+           changes, instead of only protecting the info pop-out.
+  v2.0.0 — Rarity added: Legendary/Mythical species get a ✦ badge and
+           a big sparkly "Legendary/Mythical catch!" pop-out the moment
+           they're marked caught. Every other catch also has a good
+           chance of a smaller "Nice catch!" sparkle, so it stays
+           exciting often, not just on the rare few.
+  v2.1.0 — Full 5-star rarity scale shown right on each card's artwork
+           (★☆☆☆☆ Normal through ★★★★★ Legendary). Catch messages now
+           match tier: nothing at 1 star, "Nice catch!" at 2, "Awesome!"
+           at 3, "A Rare find!! Amazing!!" at 4, "LEGENDARY!!!!!!!" at 5.
+           Also shown in the info pop-out. Legendary/Mythical species are
+           always 5 stars; other tiers are a fun deterministic scale, not
+           official game data.
+  v2.2.0 — Added a rarity filter: five chips (★ Normal through ★★★★★
+           Legendary) that combine with type, number, and caught-status
+           filters, same as the others.
+  v2.3.0 — New "Binder Guide" tab for physical card binders with a 3x3
+           grid per page. Page 1 is single-sided (9 slots, #1–9); every
+           page after that is a double-page spread of 18 (9 left + 9
+           right). Search a Pokémon to see its exact page/slot, or
+           browse the full spread-by-spread layout with caught status
+           highlighted.
+  v2.4.0 — Binder Guide is now a full-screen, one-page-at-a-time
+           swiper — swipe left/right (or use the arrow buttons) to
+           flip pages, matching the physical binder. Added its own
+           search + type/rarity/caught-status filters, plus a number
+           filter using "Every 18" instead of "Every 20" to match the
+           spread size — filters dim non-matching cards rather than
+           hiding them, since the physical page layout is fixed.
+  v2.5.0 — Removed the prev/next arrows from the Binder Guide (swipe
+           still works, and it reads cleaner without them). Artwork in
+           each binder cell is noticeably bigger now too.
+  v2.6.0 — Fixed the Binder Guide's "Every 18" number filter to align
+           with real page boundaries: #1–9 (page 1) first, then #10–27,
+           #28–45, and so on — instead of counting straight 18s from #1,
+           which didn't match the actual spreads.
+  v2.7.0 — Caught Pokémon are now much more obvious in the Binder Guide:
+           a bold "Caught" ink stamp, a warm gold highlight with a glow
+           border, and a checkmark badge on the artwork itself.
+  v2.8.0 — Added a web app manifest and icon so this can be added to a
+           phone home screen as a proper full-screen app (no Chrome
+           address bar), same as the House Ledger and Meal Planner apps.
+           Needs manifest.json, icon-192.png, and icon-512.png uploaded
+           alongside index.html in the same GitHub repo.
+  v2.9.0 — Added « / » buttons to the Binder Guide toolbar that jump
+           10 pages back/forward at once, alongside the existing swipe
+           and search navigation.
+
+  Data note: caught progress and the species cache are stored in this app's
+  local storage AND can be exported to a standalone .txt file (see the
+  "Data file" panel). Re-import that file after updating to a new version
+  of this HTML to bring your progress back.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Full Index — National Pokédex</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#22301f">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;0,9..144,900;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#e7e2c8; --panel:#faf7ea; --ink:#22301f; --ink-soft:#54614c; --line:#b6ac86; --stamp:#a3392c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink); font-family:'Inter',sans-serif;
+    min-height:100vh; padding-bottom:60px;
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 20px 0;}
+  header{border-bottom:3px double var(--ink); padding-bottom:16px; margin-bottom:20px;}
+  h1{font-family:'Fraunces',serif;font-weight:900;font-size:2.1rem;margin:0;}
+  h1 span{font-style:italic;font-weight:600;color:var(--ink-soft);font-size:0.5em;display:block;margin-top:2px;}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:18px 20px;margin-bottom:18px;box-shadow:0 1px 0 var(--line), 0 6px 14px -10px rgba(0,0,0,.25);}
+  .panel h2{font-family:'Fraunces',serif;font-size:.95rem;margin:0 0 12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);}
+
+  .search{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:4px;font-size:.9rem;background:var(--panel);color:var(--ink);margin-bottom:4px;}
+  .search:focus{outline:none;border-color:var(--ink);}
+
+  .type-chips{display:flex;flex-wrap:wrap;gap:7px;}
+  .chip{
+    font-family:'JetBrains Mono',monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;
+    padding:5px 11px;border-radius:20px;cursor:pointer;border:2px solid transparent;color:#fff;opacity:.55;
+    transition:opacity .12s, transform .12s;
+  }
+  .chip:hover{opacity:.85;}
+  .chip.active{opacity:1;border-color:var(--ink);transform:translateY(-1px);}
+
+  .seg{display:flex;gap:0;border:1px solid var(--ink);border-radius:4px;overflow:hidden;width:max-content;margin-bottom:12px;}
+  .seg button{
+    font-family:'Inter',sans-serif;font-weight:600;font-size:.78rem;border:none;background:transparent;
+    color:var(--ink);padding:6px 14px;cursor:pointer;
+  }
+  .seg button.active{background:var(--ink);color:var(--panel);}
+
+  .range-row{display:flex;flex-wrap:wrap;gap:6px;}
+  .range-btn{
+    font-family:'JetBrains Mono',monospace;font-size:.72rem;padding:5px 10px;border-radius:4px;
+    border:1px solid var(--line);background:transparent;color:var(--ink-soft);cursor:pointer;
+  }
+  .range-btn:hover{border-color:var(--ink);color:var(--ink);}
+  .range-btn.active{background:var(--ink);color:var(--panel);border-color:var(--ink);}
+
+  .status-line{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:var(--ink-soft);margin:6px 0 0;}
+  .status-line.err{color:var(--stamp);}
+
+  .btn-data{
+    font-family:'Inter',sans-serif;font-weight:600;font-size:.82rem;
+    border:1px solid var(--ink);background:var(--ink);color:var(--panel);
+    padding:8px 15px;border-radius:3px;cursor:pointer;display:inline-block;
+  }
+  .btn-data:hover{opacity:.88;}
+
+  .count-line{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--ink-soft);margin-bottom:12px;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;}
+  .mon{
+    background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:10px 12px;
+    box-shadow:0 3px 8px -7px rgba(0,0,0,.4);
+    position:relative;cursor:pointer;user-select:none;transition:border-color .12s, background .12s;
+  }
+  .mon:hover{border-color:var(--ink);}
+  .mon.caught{background:#f2ead2;border-color:var(--stamp);}
+  .mon .sprite{
+    width:100%;height:88px;object-fit:contain;display:block;margin-bottom:6px;
+    background:radial-gradient(circle, rgba(0,0,0,.05) 0%, transparent 70%);
+    image-rendering:auto;
+  }
+  .mon .num{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--ink-soft);}
+  .mon .name{font-family:'Fraunces',serif;font-weight:700;font-size:.95rem;margin:2px 0 6px;}
+  .mon .types{display:flex;gap:5px;flex-wrap:wrap;}
+  .mon .type-badge{font-family:'JetBrains Mono',monospace;font-size:.6rem;text-transform:uppercase;letter-spacing:.03em;color:#fff;padding:2px 7px;border-radius:10px;}
+  .mon .stamp{
+    position:absolute;top:6px;right:-18px;background:transparent;color:var(--stamp);
+    border:2px solid var(--stamp);padding:1px 20px;font-family:'Fraunces',serif;font-weight:900;
+    font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;transform:rotate(11deg);
+    opacity:.88;pointer-events:none;border-radius:2px;
+  }
+  .mon .info-btn{
+    position:absolute;top:6px;left:6px;width:20px;height:20px;border-radius:50%;
+    background:rgba(34,48,31,0.08);color:var(--ink-soft);border:none;cursor:pointer;
+    font-family:'Fraunces',serif;font-style:italic;font-weight:700;font-size:.72rem;
+    line-height:20px;text-align:center;padding:0;opacity:.6;transition:opacity .12s, background .12s;
+  }
+  .mon .info-btn:hover{opacity:1;background:var(--ink);color:var(--panel);}
+
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(20,24,16,.55);display:flex;align-items:center;
+    justify-content:center;padding:20px;z-index:50;
+  }
+  .modal-box{
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;max-width:360px;width:100%;
+    padding:20px;position:relative;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);
+  }
+  .modal-close{
+    position:absolute;top:10px;right:12px;background:none;border:none;font-size:1.3rem;
+    color:var(--ink-soft);cursor:pointer;line-height:1;
+  }
+  .modal-close:hover{color:var(--ink);}
+  .modal-box img.modal-sprite{width:140px;height:140px;object-fit:contain;display:block;margin:0 auto 8px;}
+  .modal-box .modal-num{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--ink-soft);text-align:center;}
+  .modal-box .modal-name{font-family:'Fraunces',serif;font-weight:900;font-size:1.4rem;text-align:center;margin:2px 0 10px;}
+  .modal-box .modal-types{display:flex;gap:6px;justify-content:center;margin-bottom:16px;}
+  .modal-stats{border-top:1px solid var(--line);padding-top:12px;}
+  .modal-stat-row{display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0;}
+  .modal-stat-row .k{font-family:'JetBrains Mono',monospace;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);}
+  .modal-stat-row .v{font-weight:600;text-align:right;}
+  .modal-loading{text-align:center;padding:30px 0;font-family:'JetBrains Mono',monospace;color:var(--ink-soft);font-size:.85rem;}
+
+  .sprite-wrap{position:relative;}
+  .sprite-wrap .star-badge{
+    position:absolute;bottom:2px;right:2px;background:rgba(250,247,234,0.88);
+    border-radius:3px;padding:1px 4px;font-size:.62rem;letter-spacing:-1px;color:var(--want);
+    pointer-events:none;
+  }
+  .mon.rare{border-color:var(--want);}
+
+  .rare-overlay{
+    position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at center, rgba(184,130,42,.35), rgba(20,24,16,.78));
+    overflow:hidden;cursor:pointer;
+  }
+  .rare-card{
+    background:var(--panel);border:2px solid var(--want);border-radius:8px;padding:26px 24px;
+    text-align:center;max-width:280px;box-shadow:0 20px 50px -10px rgba(0,0,0,.6);cursor:default;
+  }
+  .rare-card.nice{border-color:var(--line);}
+  .rare-card.legendary{border-color:var(--stamp);box-shadow:0 0 0 4px rgba(163,57,44,.15), 0 20px 50px -10px rgba(0,0,0,.6);}
+  .rare-card.legendary .rare-title{color:var(--stamp);font-size:1.15rem;}
+  .rare-card img{width:130px;height:130px;object-fit:contain;margin:0 auto 10px;display:block;}
+  .rare-title{font-family:'Fraunces',serif;font-weight:900;font-size:1rem;color:var(--want);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+  .rare-card.nice .rare-title{color:var(--ink-soft);}
+  .rare-name{font-family:'Fraunces',serif;font-weight:700;font-size:1.3rem;margin-bottom:4px;}
+  .rare-sub{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--ink-soft);}
+  .sparkle{position:absolute;color:var(--want);pointer-events:none;animation:sparkle-pop 1.4s ease-in-out infinite;}
+  @keyframes sparkle-pop{0%,100%{opacity:0;transform:scale(.3) rotate(0deg);}50%{opacity:1;transform:scale(1) rotate(90deg);}}
+  .sprite-tap-wrap{
+    position:relative;width:140px;height:140px;margin:0 auto 4px;cursor:pointer;
+    border-radius:6px;transition:background .12s;
+  }
+  .sprite-tap-wrap:hover{background:rgba(163,57,44,0.08);}
+  .sprite-tap-wrap:active{background:rgba(163,57,44,0.15);}
+  .sprite-tap-wrap img.modal-sprite{margin:0;pointer-events:none;}
+  .sprite-tap-wrap .modal-stamp{
+    position:absolute;top:6px;right:-10px;background:transparent;color:var(--stamp);
+    border:2px solid var(--stamp);padding:1px 16px;font-family:'Fraunces',serif;font-weight:900;
+    font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;transform:rotate(11deg);
+    opacity:.9;pointer-events:none;border-radius:2px;
+  }
+  .tap-hint{
+    text-align:center;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--ink-soft);
+    margin-bottom:10px;
+  }
+
+  .progress-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .progress-head h2{margin:0;}
+  .mode-toggle{display:flex;border:1px solid var(--ink);border-radius:20px;overflow:hidden;}
+  .mode-toggle button{
+    font-family:'JetBrains Mono',monospace;font-weight:700;font-size:.68rem;border:none;background:transparent;
+    color:var(--ink);padding:5px 14px;cursor:pointer;text-transform:uppercase;letter-spacing:.04em;
+  }
+  .mode-toggle button.active{background:var(--ink);color:var(--panel);}
+
+  .prow{margin-bottom:12px;}
+  .prow:last-child{margin-bottom:0;}
+  .prow .prow-top{display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:5px;}
+  .prow .prow-label{font-family:'Fraunces',serif;font-weight:700;}
+  .prow .prow-sub{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--ink-soft);font-weight:400;margin-left:6px;}
+  .prow .prow-val{font-family:'JetBrains Mono',monospace;color:var(--ink-soft);}
+  .bar-track{background:var(--paper);border:1px solid var(--line);border-radius:20px;height:9px;overflow:hidden;}
+  .bar-fill{background:var(--stamp);height:100%;border-radius:20px 0 0 20px;transition:width .2s;}
+  .prow.overall .bar-fill{border-radius:20px;}
+
+  .empty{text-align:center;padding:40px 20px;color:var(--ink-soft);font-family:'Fraunces',serif;font-style:italic;font-size:1.05rem;border:1px dashed var(--line);border-radius:6px;}
+
+  .loading{text-align:center;padding:60px 20px;font-family:'JetBrains Mono',monospace;color:var(--ink-soft);}
+
+  .view-tabs{display:flex;gap:4px;margin-bottom:18px;}
+  .view-tab{
+    font-family:'Fraunces',serif;font-weight:700;font-size:.95rem;
+    padding:9px 20px;border:1px solid var(--ink);border-radius:5px;
+    background:transparent;color:var(--ink-soft);cursor:pointer;
+  }
+  .view-tab.active{background:var(--ink);color:var(--panel);}
+
+  .binder-result{
+    margin-top:10px;font-family:'Inter',sans-serif;font-size:.88rem;padding:10px 12px;
+    background:var(--paper);border:1px solid var(--line);border-radius:4px;display:none;
+  }
+  .binder-result b{font-family:'Fraunces',serif;}
+
+  .binder-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+  .binder-skip-group{display:flex;align-items:center;gap:10px;}
+  .skip-btn{
+    background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    font-family:'JetBrains Mono',monospace;font-weight:700;font-size:.85rem;
+    color:var(--ink-soft);padding:6px 12px;cursor:pointer;
+  }
+  .skip-btn:hover{color:var(--ink);border-color:var(--ink);}
+  .skip-btn:disabled{opacity:.3;cursor:default;}
+  .binder-filters-toggle{
+    font-family:'Inter',sans-serif;font-weight:600;font-size:.82rem;border:1px solid var(--ink);
+    background:transparent;color:var(--ink);padding:7px 16px;border-radius:4px;cursor:pointer;
+  }
+  .binder-filters-toggle.active{background:var(--ink);color:var(--panel);}
+  .page-indicator{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:var(--ink-soft);}
+  .binder-filters-panel{display:none;margin-bottom:6px;}
+  .binder-filters-panel.open{display:block;}
+
+  .binder-swiper-wrap{display:flex;align-items:stretch;}
+  #binderSwiper{
+    flex:1;min-height:calc(100vh - 200px);
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;
+    padding:18px;display:flex;flex-direction:column;touch-action:pan-y;user-select:none;
+  }
+  .binder-fullpage-label{font-family:'Fraunces',serif;font-weight:900;font-size:1.4rem;text-align:center;margin-bottom:2px;}
+  .binder-fullpage-sub{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--ink-soft);text-align:center;margin-bottom:18px;}
+  .binder-fullgrid{flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:12px;}
+  .binder-fullcell{
+    border:1px solid var(--line);border-radius:6px;background:var(--paper);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3px;
+    position:relative;transition:opacity .15s;overflow:hidden;
+  }
+  .binder-fullcell.caught{
+    background:#f5e7bd;border:2px solid var(--stamp);
+    box-shadow:0 0 0 3px rgba(163,57,44,.14), inset 0 0 18px rgba(163,57,44,.08);
+  }
+  .binder-fullcell.dimmed{opacity:.22;}
+  .binder-fullcell.empty-cell{opacity:.12;}
+  .binder-fullcell img{width:92%;max-height:80%;object-fit:contain;flex:1;}
+  .binder-fullcell .bc-num{font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--ink-soft);}
+  .binder-fullcell .bc-name{font-family:'Inter',sans-serif;font-weight:600;font-size:.7rem;text-align:center;}
+  .binder-fullcell .bc-slot{position:absolute;top:5px;left:7px;font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--ink-soft);z-index:1;}
+  .binder-stamp{
+    position:absolute;top:5px;right:5px;background:transparent;color:var(--stamp);
+    border:2px solid var(--stamp);padding:1px 8px;font-family:'Fraunces',serif;font-weight:900;
+    font-size:.56rem;letter-spacing:.08em;text-transform:uppercase;transform:rotate(8deg);
+    opacity:.92;pointer-events:none;border-radius:2px;z-index:2;
+  }
+  .bc-check{
+    position:absolute;bottom:22%;right:8%;width:22px;height:22px;border-radius:50%;
+    background:var(--stamp);color:#fff;font-size:.85rem;font-weight:900;
+    display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3);z-index:2;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>The Full Index<span>every known species, sortable and searchable · v2.9.0</span></h1>
+  </header>
+
+  <div class="panel">
+    <div class="progress-head">
+      <h2>Progress</h2>
+      <div class="mode-toggle" id="modeToggle">
+        <button class="active" data-mode="count">count</button>
+        <button data-mode="percent">%</button>
+      </div>
+    </div>
+    <div id="progressWrap"></div>
+  </div>
+
+  <div class="view-tabs" id="viewTabs">
+    <button class="view-tab active" data-view="index">Species Index</button>
+    <button class="view-tab" data-view="binder">Binder Guide</button>
+  </div>
+
+  <div id="indexView">
+
+  <div class="panel">
+    <h2>Search</h2>
+    <input class="search" id="searchBox" placeholder="Search by name or number…">
+  </div>
+
+  <div class="panel">
+    <h2>Filter by type</h2>
+    <div class="type-chips" id="typeChips"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Filter by number</h2>
+    <div class="seg" id="rangeMode">
+      <button class="active" data-mode="100">Every 100</button>
+      <button data-mode="20">Every 20</button>
+    </div>
+    <div class="range-row" id="rangeRow"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Filter by rarity</h2>
+    <div class="type-chips" id="rarityChips"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Filter by caught status</h2>
+    <div class="seg" id="caughtMode">
+      <button class="active" data-caught="all">All</button>
+      <button data-caught="yes">Caught</button>
+      <button data-caught="no">Not caught</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Data file</h2>
+    <p style="margin:0 0 12px;font-size:.85rem;color:var(--ink-soft);">
+      Your progress lives in this app, but it's worth keeping a copy of your own.
+      Export it as a text file and save it to your phone — if you ever load a newer
+      version of this tracker, import that file to bring your progress back.
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn-data" id="exportBtn">Export data file</button>
+      <label class="btn-data" for="importFile" style="cursor:pointer;">Import data file</label>
+      <input type="file" id="importFile" accept=".txt,.json" style="display:none;">
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:.85rem;cursor:pointer;">
+      <input type="checkbox" id="autoBackupToggle">
+      Auto-backup — download a fresh file ~10s after each change, and on close
+    </label>
+    <div class="status-line" id="dataStatus"></div>
+  </div>
+
+  <div id="content">
+    <div class="loading">Loading the index from the field archive…</div>
+  </div>
+
+  </div>
+
+  <div id="binderView" style="display:none;">
+    <div class="binder-toolbar">
+      <button class="binder-filters-toggle" id="binderFiltersToggle">Search & filters</button>
+      <div class="binder-skip-group">
+        <button class="skip-btn" id="binderSkipBackBtn" aria-label="Back 10 pages">«</button>
+        <div class="page-indicator" id="binderPageIndicator"></div>
+        <button class="skip-btn" id="binderSkipFwdBtn" aria-label="Forward 10 pages">»</button>
+      </div>
+    </div>
+
+    <div class="binder-filters-panel" id="binderFiltersPanel">
+      <div class="panel">
+        <h2>Find a Pokémon's page</h2>
+        <input class="search" id="binderSearch" placeholder="Search by name or number…">
+        <div class="binder-result" id="binderSearchResult"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Filter by type</h2>
+        <div class="type-chips" id="binderTypeChips"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Filter by number</h2>
+        <div class="seg" id="binderRangeMode">
+          <button class="active" data-mode="100">Every 100</button>
+          <button data-mode="18">Every 18</button>
+        </div>
+        <div class="range-row" id="binderRangeRow"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Filter by rarity</h2>
+        <div class="type-chips" id="binderRarityChips"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Filter by caught status</h2>
+        <div class="seg" id="binderCaughtMode">
+          <button class="active" data-caught="all">All</button>
+          <button data-caught="yes">Caught</button>
+          <button data-caught="no">Not caught</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="binder-swiper-wrap">
+      <div id="binderSwiper"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="modalOverlay" style="display:none;">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<script>
+// Storage shim: window.storage only exists inside Claude's artifact preview.
+// When this file is opened as a plain hosted page (e.g. from a home screen
+// bookmark), fall back to localStorage with the same get/set/delete/list
+// shape, so nothing else in this file has to know the difference.
+if(!window.storage){
+  window.storage = {
+    async get(key){
+      const raw = localStorage.getItem('storage:'+key);
+      if(raw === null) return null;
+      return { key, value: raw, shared:false };
+    },
+    async set(key, value){
+      localStorage.setItem('storage:'+key, value);
+      return { key, value, shared:false };
+    },
+    async delete(key){
+      localStorage.removeItem('storage:'+key);
+      return { key, deleted:true, shared:false };
+    },
+    async list(prefix){
+      const p = 'storage:'+(prefix||'');
+      const keys = Object.keys(localStorage).filter(k=>k.startsWith(p)).map(k=>k.slice(8));
+      return { keys, prefix, shared:false };
+    }
+  };
+}
+
+const TYPE_COLORS = {
+  normal:'#A8A77A', fire:'#EE8130', water:'#6390F0', electric:'#F7D02C', grass:'#7AC74C',
+  ice:'#96D9D6', fighting:'#C22E28', poison:'#A33EA1', ground:'#E2BF65', flying:'#A98FF3',
+  psychic:'#F95587', bug:'#A6B91A', rock:'#B6A136', ghost:'#735797', dragon:'#6F35FC',
+  dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
+};
+const MAX_DEX = 1025;
+const APP_VERSION = '2.9.0';
+const STORAGE_KEY = 'pokedex-index-v1';
+const CAUGHT_KEY = 'pokedex-caught-v1';
+const AUTOBACKUP_KEY = 'pokedex-autobackup-v1';
+
+let autoBackupEnabled = false;
+let dirtySinceExport = false;
+let autoBackupTimer = null;
+const GENERATIONS = [
+  { name:'Kanto',    start:1,    end:151  },
+  { name:'Johto',    start:152,  end:251  },
+  { name:'Hoenn',    start:252,  end:386  },
+  { name:'Sinnoh',   start:387,  end:493  },
+  { name:'Unova',    start:494,  end:649  },
+  { name:'Kalos',    start:650,  end:721  },
+  { name:'Alola',    start:722,  end:809  },
+  { name:'Galar',    start:810,  end:905  },
+  { name:'Paldea',   start:906,  end:1025 }
+];
+
+let progressMode = 'count'; // count | percent
+
+// Legendary + Mythical species — used as the "rare" tier. Compiled from
+// well-known official classifications; if one looks off, it's easy to adjust.
+const LEGENDARY_IDS = new Set([
+  144,145,146,150,243,244,245,249,250,377,378,379,380,381,382,383,384,
+  480,481,482,483,484,485,486,487,488,638,639,640,641,642,643,644,645,646,
+  716,717,718,785,786,787,788,789,790,791,792,800,888,889,890,891,892,
+  894,895,896,897,898,905,1001,1002,1003,1004,1007,1008,1014,1015,1016,1017,1024
+]);
+const MYTHICAL_IDS = new Set([
+  151,251,385,386,490,491,492,493,494,647,648,649,719,720,721,801,802,807,808,809,893,1025
+]);
+const RARE_IDS = new Set([...LEGENDARY_IDS, ...MYTHICAL_IDS]);
+
+const STAR_LABELS = { 1:'Normal', 2:'Slightly Rare', 3:'Quite Rare', 4:'Rare', 5:'Legendary' };
+const STAR_TITLES = { 2:'✨ Nice catch! ✨', 3:'✨ Awesome! ✨', 4:'✨ A Rare find!! Amazing!! ✨', 5:'✨ LEGENDARY!!!!!!! ✨' };
+const STAR_COLORS = { 1:'#8a8a78', 2:'#6390F0', 3:'#7AC74C', 4:'#EE8130', 5:'#a3392c' };
+let activeRarities = new Set();
+
+// Star rating: Legendary/Mythical species are always 5. Everything else gets a
+// deterministic 1–4 rating from its dex number, so it's stable and repeatable
+// (not official game data — Pokémon don't have a real rarity number — just a
+// fun, consistent scale weighted toward "Normal").
+function starRating(id){
+  if(RARE_IDS.has(id)) return 5;
+  const seed = (id * 2654435761) % 100;
+  if(seed < 45) return 1;
+  if(seed < 72) return 2;
+  if(seed < 90) return 3;
+  return 4;
+}
+
+let allMons = [];
+let activeTypes = new Set();
+let rangeMode = '100';
+let activeRange = null; // [start,end] inclusive, or null for all
+let caughtFilter = 'all'; // all | yes | no
+let caughtIds = new Set();
+
+async function loadCaught(){
+  try{
+    const res = await window.storage.get(CAUGHT_KEY, false);
+    if(res && res.value) caughtIds = new Set(JSON.parse(res.value));
+  }catch(e){ /* nothing caught yet */ }
+}
+async function saveCaught(){
+  try{ await window.storage.set(CAUGHT_KEY, JSON.stringify([...caughtIds]), false); }
+  catch(e){ console.error('could not save caught state', e); }
+}
+function toggleCaught(id){
+  let added;
+  if(caughtIds.has(id)){ caughtIds.delete(id); added = false; }
+  else { caughtIds.add(id); added = true; }
+  saveCaught();
+  dirtySinceExport = true;
+  scheduleAutoBackup();
+  render();
+  renderProgress();
+  const binderView = document.getElementById('binderView');
+  if(binderView && binderView.style.display !== 'none') renderBinderView();
+  return added;
+}
+
+function maybeCelebrate(id){
+  const tier = starRating(id);
+  if(tier === 1) return; // Normal — nothing happens
+  celebrate(id, tier);
+}
+
+function celebrate(id, tier){
+  const mon = allMons.find(m=>m.id===id);
+  const overlay = document.createElement('div');
+  overlay.className = 'rare-overlay';
+  const sparkleCount = 6 + tier * 5; // more sparkles at higher tiers
+  let sparkleHtml = '';
+  for(let i=0;i<sparkleCount;i++){
+    const left = Math.random()*100;
+    const top = Math.random()*100;
+    const delay = (Math.random()*1.4).toFixed(2);
+    const size = 10 + Math.random()*14;
+    sparkleHtml += `<span class="sparkle" style="left:${left}%;top:${top}%;animation-delay:${delay}s;font-size:${size}px;">✦</span>`;
+  }
+  overlay.innerHTML = `
+    ${sparkleHtml}
+    <div class="rare-card${tier <= 2 ? ' nice' : ''}${tier === 5 ? ' legendary' : ''}">
+      <div class="rare-title">${STAR_TITLES[tier]}</div>
+      <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png';">
+      <div class="rare-name">${mon ? mon.name : ''}</div>
+      <div class="rare-sub">#${String(id).padStart(4,'0')} · ${STAR_LABELS[tier]} · tap anywhere to close</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const dismiss = ()=> overlay.remove();
+  overlay.addEventListener('click', dismiss);
+  setTimeout(dismiss, 1800 + tier * 500);
+}
+function titleCase(name){
+  return name.split('-').map(w => w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+}
+
+async function loadIndex(){
+  await loadCaught();
+  try{
+    const cached = await window.storage.get(STORAGE_KEY, false);
+    if(cached && cached.value){
+      allMons = JSON.parse(cached.value);
+      init();
+      return;
+    }
+  }catch(e){ /* nothing cached yet */ }
+
+  try{
+    const typeNames = Object.keys(TYPE_COLORS);
+    const results = await Promise.all(typeNames.map(t =>
+      fetch(`https://pokeapi.co/api/v2/type/${t}`).then(r=>r.json())
+    ));
+    const map = {};
+    results.forEach((data, i) => {
+      const typeName = typeNames[i];
+      data.pokemon.forEach(entry => {
+        const match = entry.pokemon.url.match(/\/pokemon\/(\d+)\//);
+        if(!match) return;
+        const id = parseInt(match[1], 10);
+        if(id < 1 || id > MAX_DEX) return;
+        if(!map[id]) map[id] = { id, name: titleCase(entry.pokemon.name), types: [] };
+        map[id].types.push({ name: typeName, slot: entry.slot });
+      });
+    });
+    allMons = Object.values(map).map(m => {
+      m.types.sort((a,b)=>a.slot-b.slot);
+      m.types = m.types.map(t=>t.name);
+      return m;
+    }).sort((a,b)=>a.id-b.id);
+
+    try{ await window.storage.set(STORAGE_KEY, JSON.stringify(allMons), false); }catch(e){}
+    init();
+  }catch(err){
+    document.getElementById('content').innerHTML =
+      '<div class="empty">Could not reach the Pokédex archive right now. If this keeps happening, check your network settings for this app.</div>';
+    console.error(err);
+  }
+}
+
+function buildRangeButtons(){
+  const row = document.getElementById('rangeRow');
+  row.innerHTML = '';
+  const step = rangeMode === '100' ? 100 : 20;
+  const allBtn = document.createElement('button');
+  allBtn.className = 'range-btn' + (activeRange===null ? ' active' : '');
+  allBtn.textContent = 'All';
+  allBtn.addEventListener('click', ()=>{ activeRange = null; buildRangeButtons(); render(); });
+  row.appendChild(allBtn);
+
+  for(let start=1; start<=MAX_DEX; start+=step){
+    const end = Math.min(start+step-1, MAX_DEX);
+    const btn = document.createElement('button');
+    btn.className = 'range-btn' + (activeRange && activeRange[0]===start ? ' active' : '');
+    btn.textContent = `#${start}–${end}`;
+    btn.addEventListener('click', ()=>{ activeRange=[start,end]; buildRangeButtons(); render(); });
+    row.appendChild(btn);
+  }
+}
+
+function buildTypeChips(){
+  const wrap = document.getElementById('typeChips');
+  wrap.innerHTML = '';
+  Object.keys(TYPE_COLORS).forEach(t=>{
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.style.background = TYPE_COLORS[t];
+    chip.textContent = t;
+    chip.addEventListener('click', ()=>{
+      if(activeTypes.has(t)) activeTypes.delete(t); else activeTypes.add(t);
+      chip.classList.toggle('active');
+      render();
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+function buildRarityChips(){
+  const wrap = document.getElementById('rarityChips');
+  wrap.innerHTML = '';
+  [1,2,3,4,5].forEach(tier=>{
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.style.background = STAR_COLORS[tier];
+    chip.textContent = `${'★'.repeat(tier)} ${STAR_LABELS[tier]}`;
+    chip.addEventListener('click', ()=>{
+      if(activeRarities.has(tier)) activeRarities.delete(tier); else activeRarities.add(tier);
+      chip.classList.toggle('active');
+      render();
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+function fmtProgress(caught, total){
+  if(progressMode === 'percent'){
+    const pct = total === 0 ? 0 : (caught/total*100);
+    return `${pct.toFixed(1)}%`;
+  }
+  return `${caught} of ${total}`;
+}
+
+function renderProgress(){
+  const wrap = document.getElementById('progressWrap');
+  const overallCaught = caughtIds.size;
+
+  let rows = `
+    <div class="prow overall">
+      <div class="prow-top">
+        <span class="prow-label">All Pokémon</span>
+        <span class="prow-val">${fmtProgress(overallCaught, MAX_DEX)}</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(overallCaught/MAX_DEX*100)}%"></div></div>
+    </div>
+  `;
+
+  GENERATIONS.forEach(g=>{
+    const total = g.end - g.start + 1;
+    const caught = [...caughtIds].filter(id => id >= g.start && id <= g.end).length;
+    rows += `
+      <div class="prow">
+        <div class="prow-top">
+          <span class="prow-label">${g.name}<span class="prow-sub">#${g.start}–${g.end}</span></span>
+          <span class="prow-val">${fmtProgress(caught, total)}</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(caught/total*100)}%"></div></div>
+      </div>
+    `;
+  });
+
+  wrap.innerHTML = rows;
+}
+
+function render(){
+  const q = document.getElementById('searchBox').value.trim().toLowerCase();
+  let list = allMons;
+
+  if(activeRange) list = list.filter(m => m.id >= activeRange[0] && m.id <= activeRange[1]);
+  if(activeTypes.size > 0) list = list.filter(m => m.types.some(t => activeTypes.has(t)));
+  if(activeRarities.size > 0) list = list.filter(m => activeRarities.has(starRating(m.id)));
+  if(q) list = list.filter(m => m.name.toLowerCase().includes(q) || String(m.id).includes(q));
+  if(caughtFilter === 'yes') list = list.filter(m => caughtIds.has(m.id));
+  if(caughtFilter === 'no') list = list.filter(m => !caughtIds.has(m.id));
+
+  const content = document.getElementById('content');
+  if(list.length === 0){
+    content.innerHTML = '<div class="empty">No Pokémon match those filters.</div>';
+    return;
+  }
+
+  const grid = list.map(m => {
+    const stars = starRating(m.id);
+    const starStr = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+    return `
+    <div class="mon${caughtIds.has(m.id) ? ' caught' : ''}${stars===5 ? ' rare' : ''}" data-id="${m.id}">
+      ${caughtIds.has(m.id) ? '<div class="stamp">Caught</div>' : ''}
+      <button class="info-btn" data-info-id="${m.id}" aria-label="More info">i</button>
+      <div class="sprite-wrap">
+        <img class="sprite" loading="lazy" alt="${m.name}"
+          src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${m.id}.png"
+          onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${m.id}.png';">
+        <div class="star-badge" title="${STAR_LABELS[stars]}">${starStr}</div>
+      </div>
+      <div class="num">#${String(m.id).padStart(4,'0')}</div>
+      <div class="name">${m.name}</div>
+      <div class="types">
+        ${m.types.map(t=>`<span class="type-badge" style="background:${TYPE_COLORS[t]}">${t}</span>`).join('')}
+      </div>
+    </div>
+  `;}).join('');
+
+  content.innerHTML = `<div class="count-line">${list.length} shown</div><div class="grid">${grid}</div>`;
+  content.querySelectorAll('.mon').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const id = parseInt(el.dataset.id, 10);
+      const mon = allMons.find(m=>m.id===id);
+      const displayName = mon ? mon.name : `#${id}`;
+      const question = caughtIds.has(id)
+        ? `Remove ${displayName} from your caught list?`
+        : `Mark ${displayName} as caught?`;
+      if(window.confirm(question)){
+        const added = toggleCaught(id);
+        if(added) maybeCelebrate(id);
+      }
+    });
+  });
+  content.querySelectorAll('.info-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.stopPropagation();
+      openInfoModal(parseInt(btn.dataset.infoId, 10));
+    });
+  });
+}
+
+const detailCache = {};
+async function openInfoModal(id){
+  const overlay = document.getElementById('modalOverlay');
+  const box = document.getElementById('modalBox');
+  const mon = allMons.find(m=>m.id===id);
+  overlay.style.display = 'flex';
+  box.innerHTML = `<button class="modal-close" id="modalCloseBtn">&times;</button><div class="modal-loading">Reading the field notes…</div>`;
+  document.getElementById('modalCloseBtn').addEventListener('click', closeInfoModal);
+
+  try{
+    let detail = detailCache[id];
+    if(!detail){
+      const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
+      detail = await res.json();
+      detailCache[id] = detail;
+    }
+    const heightM = (detail.height/10).toFixed(1);
+    const weightKg = (detail.weight/10).toFixed(1);
+    const abilities = detail.abilities.map(a=>titleCase(a.ability.name)).join(', ');
+    box.innerHTML = `
+      <button class="modal-close" id="modalCloseBtn">&times;</button>
+      <div class="sprite-tap-wrap" id="spriteTapWrap">
+        <img class="modal-sprite" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png"
+          onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png';">
+        ${caughtIds.has(id) ? '<div class="modal-stamp">Caught</div>' : ''}
+      </div>
+      <div class="tap-hint">${caughtIds.has(id) ? 'Tap the artwork to un-mark' : 'Tap the artwork to confirm caught'}</div>
+      <div class="modal-num">#${String(id).padStart(4,'0')}</div>
+      <div class="modal-name">${mon ? mon.name : titleCase(detail.name)}</div>
+      <div class="modal-types">
+        ${(mon ? mon.types : detail.types.map(t=>t.type.name)).map(t=>`<span class="type-badge" style="background:${TYPE_COLORS[t]}">${t}</span>`).join('')}
+      </div>
+      <div class="modal-stats">
+        <div class="modal-stat-row"><span class="k">Rarity</span><span class="v">${'★'.repeat(starRating(id))}${'☆'.repeat(5-starRating(id))} ${STAR_LABELS[starRating(id)]}</span></div>
+        <div class="modal-stat-row"><span class="k">Height</span><span class="v">${heightM} m</span></div>
+        <div class="modal-stat-row"><span class="k">Weight</span><span class="v">${weightKg} kg</span></div>
+        <div class="modal-stat-row"><span class="k">Abilities</span><span class="v">${abilities}</span></div>
+        <div class="modal-stat-row"><span class="k">Base XP</span><span class="v">${detail.base_experience ?? '—'}</span></div>
+      </div>
+    `;
+    document.getElementById('modalCloseBtn').addEventListener('click', closeInfoModal);
+    document.getElementById('spriteTapWrap').addEventListener('click', ()=>{
+      const displayName = mon ? mon.name : titleCase(detail.name);
+      const question = caughtIds.has(id)
+        ? `Remove ${displayName} from your caught list?`
+        : `Mark ${displayName} as caught?`;
+      if(window.confirm(question)){
+        const added = toggleCaught(id);
+        openInfoModal(id);
+        if(added) maybeCelebrate(id);
+      }
+    });
+  }catch(err){
+    box.innerHTML = `<button class="modal-close" id="modalCloseBtn">&times;</button><div class="modal-loading">Couldn't load details right now.</div>`;
+    document.getElementById('modalCloseBtn').addEventListener('click', closeInfoModal);
+    console.error(err);
+  }
+}
+function closeInfoModal(){
+  document.getElementById('modalOverlay').style.display = 'none';
+}
+document.getElementById('modalOverlay').addEventListener('click', e=>{
+  if(e.target.id === 'modalOverlay') closeInfoModal();
+});
+
+document.getElementById('searchBox').addEventListener('input', render);
+document.getElementById('rangeMode').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-mode]');
+  if(!btn) return;
+  rangeMode = btn.dataset.mode;
+  activeRange = null;
+  document.querySelectorAll('#rangeMode button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  buildRangeButtons();
+  render();
+});
+
+document.getElementById('caughtMode').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-caught]');
+  if(!btn) return;
+  caughtFilter = btn.dataset.caught;
+  document.querySelectorAll('#caughtMode button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  render();
+});
+
+function exportDataFile(auto){
+  const payload = {
+    appVersion: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    caughtIds: [...caughtIds],
+    mons: allMons
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `pokedex-data-${stamp}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  dirtySinceExport = false;
+  const statusEl = document.getElementById('dataStatus');
+  statusEl.className = 'status-line';
+  statusEl.textContent = auto
+    ? 'Auto-backup saved. If your browser is blocking silent downloads, tap "Export data file" manually instead.'
+    : 'Saved. Keep that file somewhere on your phone — Files app, Drive, wherever you\'ll find it again.';
+}
+
+function scheduleAutoBackup(){
+  if(!autoBackupEnabled) return;
+  if(autoBackupTimer) clearTimeout(autoBackupTimer);
+  autoBackupTimer = setTimeout(()=>{
+    if(dirtySinceExport) exportDataFile(true);
+  }, 10000);
+}
+
+async function loadAutoBackupPref(){
+  try{
+    const res = await window.storage.get(AUTOBACKUP_KEY, false);
+    if(res && res.value) autoBackupEnabled = res.value === 'true';
+  }catch(e){ /* default off */ }
+  document.getElementById('autoBackupToggle').checked = autoBackupEnabled;
+}
+document.getElementById('autoBackupToggle').addEventListener('change', async e=>{
+  autoBackupEnabled = e.target.checked;
+  try{ await window.storage.set(AUTOBACKUP_KEY, String(autoBackupEnabled), false); }catch(err){}
+  if(autoBackupEnabled) scheduleAutoBackup();
+});
+
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden && autoBackupEnabled && dirtySinceExport) exportDataFile(true);
+});
+window.addEventListener('pagehide', ()=>{
+  if(autoBackupEnabled && dirtySinceExport) exportDataFile(true);
+});
+
+function importDataFile(file){
+  const statusEl = document.getElementById('dataStatus');
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try{
+      const parsed = JSON.parse(e.target.result);
+      if(!Array.isArray(parsed.caughtIds)) throw new Error('missing caughtIds');
+      caughtIds = new Set(parsed.caughtIds);
+      await saveCaught();
+      if(Array.isArray(parsed.mons) && parsed.mons.length > 0){
+        allMons = parsed.mons;
+        try{ await window.storage.set(STORAGE_KEY, JSON.stringify(allMons), false); }catch(err){}
+      }
+      renderProgress();
+      render();
+      statusEl.className = 'status-line';
+      statusEl.textContent = `Imported — ${caughtIds.size} caught, from a file saved ${parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleDateString() : 'earlier'}.`;
+    }catch(err){
+      statusEl.className = 'status-line err';
+      statusEl.textContent = 'That file doesn\'t look like a Field Log data export.';
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById('exportBtn').addEventListener('click', ()=>exportDataFile(false));
+document.getElementById('importFile').addEventListener('change', e=>{
+  if(e.target.files[0]) importDataFile(e.target.files[0]);
+  e.target.value = '';
+});
+
+document.getElementById('modeToggle').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-mode]');
+  if(!btn) return;
+  progressMode = btn.dataset.mode;
+  document.querySelectorAll('#modeToggle button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderProgress();
+});
+
+// --- Binder Guide ---
+// Physical layout: page 1 is single-sided, 9 slots (3x3). Every page after
+// that comes as a double-page spread of 18 slots (9 left + 9 right).
+function binderLocation(id){
+  if(id <= 9){
+    return { page: 1, slotOnPage: id, row: Math.ceil(id/3), col: ((id-1)%3)+1, spreadLabel: 'Page 1' };
+  }
+  const remaining = id - 9;
+  const spreadIndex = Math.floor((remaining-1)/18); // 0-based
+  const posInSpread = remaining - spreadIndex*18;    // 1-18
+  const leftPage = 2 + spreadIndex*2;
+  const rightPage = leftPage + 1;
+  const page = posInSpread <= 9 ? leftPage : rightPage;
+  const slotOnPage = posInSpread <= 9 ? posInSpread : posInSpread - 9;
+  return {
+    page, slotOnPage,
+    row: Math.ceil(slotOnPage/3), col: ((slotOnPage-1)%3)+1,
+    spreadLabel: `Pages ${leftPage}–${rightPage}`
+  };
+}
+
+// Build the full ordered list of physical pages: {pageNum, ids:[9 ids or null]}
+let binderPagesData = [];
+function buildBinderPages(){
+  const pages = [];
+  pages.push({ pageNum: 1, ids: [1,2,3,4,5,6,7,8,9] });
+  let nextId = 10;
+  while(nextId <= MAX_DEX){
+    const leftIds = [], rightIds = [];
+    for(let i=0;i<9;i++) leftIds.push(nextId+i <= MAX_DEX ? nextId+i : null);
+    for(let i=0;i<9;i++) rightIds.push(nextId+9+i <= MAX_DEX ? nextId+9+i : null);
+    const loc = binderLocation(nextId);
+    pages.push({ pageNum: loc.page, ids: leftIds });
+    pages.push({ pageNum: loc.page+1, ids: rightIds });
+    nextId += 18;
+  }
+  return pages;
+}
+
+let currentBinderPageIdx = 0;
+let binderActiveTypes = new Set();
+let binderActiveRarities = new Set();
+let binderCaughtFilter = 'all';
+let binderRangeMode = '100';
+let binderActiveRange = null;
+
+function binderFiltersActive(){
+  return binderActiveTypes.size > 0 || binderActiveRarities.size > 0 || binderCaughtFilter !== 'all' || binderActiveRange !== null;
+}
+function binderMonMatchesFilters(m){
+  if(binderActiveTypes.size > 0 && !m.types.some(t=>binderActiveTypes.has(t))) return false;
+  if(binderActiveRarities.size > 0 && !binderActiveRarities.has(starRating(m.id))) return false;
+  if(binderCaughtFilter === 'yes' && !caughtIds.has(m.id)) return false;
+  if(binderCaughtFilter === 'no' && caughtIds.has(m.id)) return false;
+  if(binderActiveRange && (m.id < binderActiveRange[0] || m.id > binderActiveRange[1])) return false;
+  return true;
+}
+
+function binderFullCellHtml(id){
+  if(!id){
+    return '<div class="binder-fullcell empty-cell"></div>';
+  }
+  const mon = allMons.find(m=>m.id===id);
+  const loc = binderLocation(id);
+  const dimmed = binderFiltersActive() && mon && !binderMonMatchesFilters(mon);
+  const caught = caughtIds.has(id);
+  return `
+    <div class="binder-fullcell${caught ? ' caught' : ''}${dimmed ? ' dimmed' : ''}">
+      <div class="bc-slot">${loc.slotOnPage}</div>
+      ${caught ? '<div class="binder-stamp">Caught</div>' : ''}
+      <img loading="lazy" alt="${mon ? mon.name : ''}"
+        src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png">
+      ${caught ? '<div class="bc-check">✓</div>' : ''}
+      <div class="bc-num">#${String(id).padStart(4,'0')}</div>
+      <div class="bc-name">${mon ? mon.name : '—'}</div>
+    </div>
+  `;
+}
+
+function renderBinderView(){
+  if(allMons.length === 0){
+    document.getElementById('binderSwiper').innerHTML = '<div class="empty">Species list is still loading — switch back to Species Index for a moment.</div>';
+    return;
+  }
+  if(binderPagesData.length === 0) binderPagesData = buildBinderPages();
+  currentBinderPageIdx = Math.max(0, Math.min(currentBinderPageIdx, binderPagesData.length-1));
+  const page = binderPagesData[currentBinderPageIdx];
+  const firstId = page.ids.find(x=>x) ;
+  const lastId = [...page.ids].reverse().find(x=>x);
+
+  document.getElementById('binderSwiper').innerHTML = `
+    <div class="binder-fullpage-label">Page ${page.pageNum}</div>
+    <div class="binder-fullpage-sub">#${firstId ? String(firstId).padStart(4,'0') : '—'}–${lastId ? String(lastId).padStart(4,'0') : '—'}</div>
+    <div class="binder-fullgrid">${page.ids.map(binderFullCellHtml).join('')}</div>
+  `;
+  document.getElementById('binderPageIndicator').textContent = `Page ${currentBinderPageIdx+1} of ${binderPagesData.length}`;
+  document.getElementById('binderSkipBackBtn').disabled = currentBinderPageIdx === 0;
+  document.getElementById('binderSkipFwdBtn').disabled = currentBinderPageIdx === binderPagesData.length-1;
+}
+
+function goToBinderPageIdx(idx){
+  currentBinderPageIdx = idx;
+  renderBinderView();
+}
+function goToBinderPageForId(id){
+  if(binderPagesData.length === 0) binderPagesData = buildBinderPages();
+  const idx = binderPagesData.findIndex(p => p.ids.includes(id));
+  if(idx !== -1) goToBinderPageIdx(idx);
+}
+
+document.getElementById('binderSkipBackBtn').addEventListener('click', ()=>{
+  goToBinderPageIdx(Math.max(0, currentBinderPageIdx - 10));
+});
+document.getElementById('binderSkipFwdBtn').addEventListener('click', ()=>{
+  if(binderPagesData.length === 0) binderPagesData = buildBinderPages();
+  goToBinderPageIdx(Math.min(binderPagesData.length-1, currentBinderPageIdx + 10));
+});
+
+// Swipe gesture support
+(function(){
+  const swiper = document.getElementById('binderSwiper');
+  let startX = null, startY = null;
+  swiper.addEventListener('touchstart', e=>{
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive:true });
+  swiper.addEventListener('touchend', e=>{
+    if(startX === null) return;
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if(Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)){
+      if(dx < 0 && currentBinderPageIdx < binderPagesData.length-1) goToBinderPageIdx(currentBinderPageIdx+1);
+      else if(dx > 0 && currentBinderPageIdx > 0) goToBinderPageIdx(currentBinderPageIdx-1);
+    }
+    startX = null; startY = null;
+  });
+})();
+
+document.getElementById('binderFiltersToggle').addEventListener('click', ()=>{
+  const panel = document.getElementById('binderFiltersPanel');
+  const btn = document.getElementById('binderFiltersToggle');
+  panel.classList.toggle('open');
+  btn.classList.toggle('active');
+});
+
+document.getElementById('binderSearch').addEventListener('input', e=>{
+  const q = e.target.value.trim().toLowerCase();
+  const resultEl = document.getElementById('binderSearchResult');
+  if(!q){ resultEl.style.display = 'none'; return; }
+  const mon = allMons.find(m => m.name.toLowerCase() === q)
+    || allMons.find(m => String(m.id) === q)
+    || allMons.find(m => m.name.toLowerCase().includes(q));
+  if(!mon){
+    resultEl.textContent = 'No match found.';
+    resultEl.style.display = 'block';
+    return;
+  }
+  const loc = binderLocation(mon.id);
+  resultEl.innerHTML = `<b>${mon.name}</b> (#${String(mon.id).padStart(4,'0')}) is on <b>Page ${loc.page}</b>, slot ${loc.slotOnPage} — row ${loc.row}, column ${loc.col}. <span style="text-decoration:underline;cursor:pointer;" id="binderJumpLink">Go there</span>`;
+  resultEl.style.display = 'block';
+  document.getElementById('binderJumpLink').addEventListener('click', ()=> goToBinderPageForId(mon.id));
+});
+
+function buildBinderTypeChips(){
+  const wrap = document.getElementById('binderTypeChips');
+  wrap.innerHTML = '';
+  Object.keys(TYPE_COLORS).forEach(t=>{
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.style.background = TYPE_COLORS[t];
+    chip.textContent = t;
+    chip.addEventListener('click', ()=>{
+      if(binderActiveTypes.has(t)) binderActiveTypes.delete(t); else binderActiveTypes.add(t);
+      chip.classList.toggle('active');
+      renderBinderView();
+    });
+    wrap.appendChild(chip);
+  });
+}
+function buildBinderRarityChips(){
+  const wrap = document.getElementById('binderRarityChips');
+  wrap.innerHTML = '';
+  [1,2,3,4,5].forEach(tier=>{
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.style.background = STAR_COLORS[tier];
+    chip.textContent = `${'★'.repeat(tier)} ${STAR_LABELS[tier]}`;
+    chip.addEventListener('click', ()=>{
+      if(binderActiveRarities.has(tier)) binderActiveRarities.delete(tier); else binderActiveRarities.add(tier);
+      chip.classList.toggle('active');
+      renderBinderView();
+    });
+    wrap.appendChild(chip);
+  });
+}
+function buildBinderRangeButtons(){
+  const row = document.getElementById('binderRangeRow');
+  row.innerHTML = '';
+  const allBtn = document.createElement('button');
+  allBtn.className = 'range-btn' + (binderActiveRange===null ? ' active' : '');
+  allBtn.textContent = 'All';
+  allBtn.addEventListener('click', ()=>{ binderActiveRange=null; buildBinderRangeButtons(); renderBinderView(); });
+  row.appendChild(allBtn);
+
+  const addRangeBtn = (start, end) => {
+    const btn = document.createElement('button');
+    btn.className = 'range-btn' + (binderActiveRange && binderActiveRange[0]===start ? ' active' : '');
+    btn.textContent = `#${start}–${end}`;
+    btn.addEventListener('click', ()=>{
+      binderActiveRange=[start,end];
+      buildBinderRangeButtons();
+      renderBinderView();
+      goToBinderPageForId(start);
+    });
+    row.appendChild(btn);
+  };
+
+  if(binderRangeMode === '100'){
+    for(let start=1; start<=MAX_DEX; start+=100){
+      addRangeBtn(start, Math.min(start+99, MAX_DEX));
+    }
+  } else {
+    // Every 18 — offset to match real binder pages: page 1 holds #1–9,
+    // then every spread after that is 18 (#10–27, #28–45, ...).
+    addRangeBtn(1, Math.min(9, MAX_DEX));
+    for(let start=10; start<=MAX_DEX; start+=18){
+      addRangeBtn(start, Math.min(start+17, MAX_DEX));
+    }
+  }
+}
+document.getElementById('binderRangeMode').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-mode]');
+  if(!btn) return;
+  binderRangeMode = btn.dataset.mode;
+  binderActiveRange = null;
+  document.querySelectorAll('#binderRangeMode button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  buildBinderRangeButtons();
+  renderBinderView();
+});
+document.getElementById('binderCaughtMode').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-caught]');
+  if(!btn) return;
+  binderCaughtFilter = btn.dataset.caught;
+  document.querySelectorAll('#binderCaughtMode button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderBinderView();
+});
+
+document.getElementById('viewTabs').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-view]');
+  if(!btn) return;
+  document.querySelectorAll('.view-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const view = btn.dataset.view;
+  document.getElementById('indexView').style.display = view === 'index' ? 'block' : 'none';
+  document.getElementById('binderView').style.display = view === 'binder' ? 'block' : 'none';
+  if(view === 'binder') renderBinderView();
+});
+
+function init(){
+  buildTypeChips();
+  buildRarityChips();
+  buildRangeButtons();
+  buildBinderTypeChips();
+  buildBinderRarityChips();
+  buildBinderRangeButtons();
+  loadAutoBackupPref();
+  renderProgress();
+  render();
+}
+
+loadIndex();
+</script>
+</body>
+</html>
