@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 3.1.0
+  VERSION: 3.2.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -86,6 +86,12 @@
            #1–649 (Kanto through Unova) it uses the actual animated
            in-game sprite instead of a static image, so it genuinely
            moves while it spins.
+  v3.2.0 — New "Page Complete!" celebration: the moment the last open
+           slot on a binder page gets caught, a bigger gold-bordered
+           pop-out shows all 9 species from that page together, with
+           a shine sweep and extra sparkles — distinct from the normal
+           per-catch celebration. Works no matter where you mark the
+           catch from (Species Index or the info pop-out).
 
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
@@ -251,6 +257,36 @@
   .rare-sub{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--ink-soft);}
   .sparkle{position:absolute;color:var(--want);pointer-events:none;animation:sparkle-pop 1.4s ease-in-out infinite;}
   @keyframes sparkle-pop{0%,100%{opacity:0;transform:scale(.3) rotate(0deg);}50%{opacity:1;transform:scale(1) rotate(90deg);}}
+
+  .page-complete-overlay{
+    background:radial-gradient(circle at center, rgba(177,130,42,.5), rgba(20,24,16,.82));
+  }
+  .page-complete-card{
+    background:var(--panel);border:3px solid var(--want);border-radius:10px;
+    padding:28px 24px;text-align:center;max-width:380px;position:relative;overflow:hidden;
+    box-shadow:0 0 0 6px rgba(177,130,42,.18), 0 25px 60px -10px rgba(0,0,0,.65);
+    cursor:default;animation:page-complete-pop .5s cubic-bezier(.2,.9,.3,1.3);
+  }
+  @keyframes page-complete-pop{0%{transform:scale(.6);opacity:0;}100%{transform:scale(1);opacity:1;}}
+  .page-complete-title{
+    font-family:'Fraunces',serif;font-weight:900;font-size:1.3rem;color:var(--want);
+    letter-spacing:.03em;margin-bottom:16px;animation:page-complete-bounce 1.2s ease-in-out infinite;
+  }
+  @keyframes page-complete-bounce{0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);}}
+  .page-complete-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
+  .page-complete-cell{
+    background:var(--paper);border:1px solid var(--want);border-radius:5px;padding:5px;
+    aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+  }
+  .page-complete-cell.empty-cell{opacity:.15;border-style:dashed;}
+  .page-complete-cell img{width:100%;height:100%;object-fit:contain;}
+  .page-complete-shine{
+    position:absolute;top:0;left:-60%;width:40%;height:100%;
+    background:linear-gradient(120deg, transparent, rgba(255,255,255,.55), transparent);
+    transform:skewX(-20deg);animation:page-complete-shine-sweep 2.4s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes page-complete-shine-sweep{0%{left:-60%;}100%{left:140%;}}
   .sprite-tap-wrap{
     position:relative;width:140px;height:140px;margin:0 auto 4px;cursor:pointer;
     border-radius:6px;transition:background .12s;
@@ -364,7 +400,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v3.1.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v3.2.0</span></h1>
   </header>
 
   <div class="panel">
@@ -535,7 +571,7 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.2.0';
 const STORAGE_KEY = 'pokedex-index-v1';
 const CAUGHT_KEY = 'pokedex-caught-v1';
 const AUTOBACKUP_KEY = 'pokedex-autobackup-v1';
@@ -605,7 +641,18 @@ async function saveCaught(){
   try{ await window.storage.set(CAUGHT_KEY, JSON.stringify([...caughtIds]), false); }
   catch(e){ console.error('could not save caught state', e); }
 }
+function findPageForId(id){
+  if(binderPagesData.length === 0) binderPagesData = buildBinderPages();
+  return binderPagesData.find(p => p.ids.includes(id));
+}
+function isPageComplete(page){
+  const realIds = page.ids.filter(x=>x);
+  return realIds.length > 0 && realIds.every(x=>caughtIds.has(x));
+}
+
 function toggleCaught(id){
+  const page = findPageForId(id);
+  const wasComplete = page ? isPageComplete(page) : false;
   let added;
   if(caughtIds.has(id)){ caughtIds.delete(id); added = false; }
   else { caughtIds.add(id); added = true; }
@@ -616,6 +663,9 @@ function toggleCaught(id){
   renderProgress();
   const binderView = document.getElementById('binderView');
   if(binderView && binderView.style.display !== 'none') renderBinderView();
+  if(added && page && !wasComplete && isPageComplete(page)){
+    celebratePageComplete(page);
+  }
   return added;
 }
 
@@ -661,6 +711,44 @@ function celebrate(id, tier){
   overlay.addEventListener('click', dismiss);
   setTimeout(dismiss, 2600 + tier * 500);
 }
+
+function celebratePageComplete(page){
+  const overlay = document.createElement('div');
+  overlay.className = 'rare-overlay page-complete-overlay';
+  let sparkleHtml = '';
+  for(let i=0;i<40;i++){
+    const left = Math.random()*100;
+    const top = Math.random()*100;
+    const delay = (Math.random()*1.6).toFixed(2);
+    const size = 12 + Math.random()*16;
+    sparkleHtml += `<span class="sparkle" style="left:${left}%;top:${top}%;animation-delay:${delay}s;font-size:${size}px;">✦</span>`;
+  }
+  const cellsHtml = page.ids.map(id=>{
+    if(!id) return '<div class="page-complete-cell empty-cell"></div>';
+    const mon = allMons.find(m=>m.id===id);
+    return `
+      <div class="page-complete-cell">
+        <img loading="lazy" alt="${mon ? mon.name : ''}"
+          src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png"
+          onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png';">
+      </div>
+    `;
+  }).join('');
+  overlay.innerHTML = `
+    ${sparkleHtml}
+    <div class="page-complete-card">
+      <div class="page-complete-shine"></div>
+      <div class="page-complete-title">🎉 PAGE ${page.pageNum} COMPLETE! 🎉</div>
+      <div class="page-complete-grid">${cellsHtml}</div>
+      <div class="rare-sub">Every slot filled · tap anywhere to close</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const dismiss = ()=> overlay.remove();
+  overlay.addEventListener('click', dismiss);
+  setTimeout(dismiss, 5000);
+}
+
 function titleCase(name){
   return name.split('-').map(w => w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
 }
