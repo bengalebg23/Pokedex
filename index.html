@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 3.9.0
+  VERSION: 4.0.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -135,6 +135,25 @@
            (all). Defaults to a "fit all" zoomed-out view; drag or
            pinch to pan/zoom, or use the +/− buttons. Tap a tile to
            jump straight to that page.
+  v4.0.0 — Three big changes:
+           1. Map view now truly zooms in: pinch/scroll past a threshold
+              and each page tile morphs from a coloured number chip into
+              a real mini 3×3 grid of that page's 9 Pokémon, tappable
+              just like the full page view. Zoom back out and it reverts
+              to the compact chip. No jump/reflow — it's the same tile,
+              just rendered differently at high zoom.
+           2. Binder Guide page view can now catch Pokémon directly —
+              tapping a card behaves the same as the Species Index (confirm
+              dialog, celebration, ✕ button to un-mark), instead of being
+              browse-only.
+           3. Replaced the "Catching Mode / Discovery Mode" tab pair with
+              a single 🔒/🔓 lock toggle, top-right of the header, that
+              applies globally (Species Index, Binder Guide, Map view).
+              Locked (default) is pure discovery — tap anything to view
+              details, nothing gets caught or removed, safe to hand the
+              phone over. Unlocked enables catching everywhere. Old
+              Catching Mode preference is migrated automatically to
+              "unlocked" the first time this version loads.
 
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
@@ -168,10 +187,10 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v3.9.0
+**Current version:** v4.0.0
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
-**Main file:** `index.html` (single-file app, ~1,400 lines — HTML/CSS/JS all in one, including this handoff)
+**Main file:** `index.html` (single-file app, ~1,600 lines — HTML/CSS/JS all in one, including this handoff)
 **Also in repo:** `manifest.json`, `icon-192.png`, `icon-512.png` (PWA install support)
 
 Installed on Ben's Pixel home screen via Chrome → Add to Home Screen. Built for
@@ -194,7 +213,29 @@ Two tabs in one HTML file:
    Has its own search/filters (type, rarity, "Every 100"/"Every 18" number
    range, caught status — filters dim non-matching cards rather than
    hiding them, since the physical layout can't rearrange). « / » buttons
-   skip 10 pages; swipe left/right also works.
+   skip 10 pages; swipe left/right also works. Tapping a card catches it
+   (when unlocked), same confirm/celebration/✕-to-unmark flow as the
+   Species Index.
+   - **Map view** — zoomed-out overview, one tile per physical page,
+     colour-coded by completion. Pan by drag, zoom by pinch/scroll/±
+     buttons. Zoom in far enough (scale ≥4.5x) and each tile morphs from
+     a coloured number chip into a real mini 3×3 grid of that page's 9
+     Pokémon — tap a mini Pokémon to catch it (when unlocked) or view it
+     (when locked), exactly like the full page view. Zoom back out and it
+     reverts to the chip. This works because the tile's underlying size
+     never changes — only what's drawn inside it — so pan/zoom math never
+     jumps or needs recalculating at the detail threshold.
+
+### Catching lock (replaces old Catching/Discovery Mode tabs)
+A single 🔒/🔓 button top-right of the header, global across both views.
+- **Locked (default, safe)** — tapping any Pokémon anywhere (grid, info
+  pop-out, binder page, map tile) only opens details. Nothing gets
+  caught or removed. Safe to hand the phone to Reuben.
+- **Unlocked** — tapping catches (with a confirm dialog), replays the
+  celebration if already caught, and ✕ buttons appear for quick removal.
+Preference is remembered (`pokedex-lock-v1`). If an old
+`pokedex-mode-v1` ("Catching Mode") value is found with nothing saved
+yet under the new key, it's migrated once to "unlocked" automatically.
 
 ## Stack
 
@@ -216,7 +257,9 @@ Two tabs in one HTML file:
 - `pokedex-index-v1` — cached species list (name/types/id), fetched once from PokeAPI.
 - `pokedex-caught-v1` — array of caught dex IDs.
 - `pokedex-autobackup-v1` — auto-backup toggle preference.
-- `pokedex-mode-v1` — Catching Mode / Discovery Mode preference.
+- `pokedex-lock-v1` — catching lock state ('locked' | 'unlocked'). Replaces
+  the old `pokedex-mode-v1` ("Catching Mode"/"Discovery Mode"), which is
+  still read once as a migration fallback if `pokedex-lock-v1` isn't set yet.
 
 ### Data portability
 - Export/Import buttons produce a `.txt` (JSON inside) file with caught
@@ -283,6 +326,16 @@ Two tabs in one HTML file:
     of every physical page as a colour-coded tile (dark red/amber/
     green/gold by caught ratio). Pan via drag, zoom via pinch or +/−
     buttons, "Fit all" resets the view. Tap a tile to jump to that page.
+25. **Map view true zoom-in** — past a scale threshold, tiles switch from
+    a coloured chip to a real mini 3×3 grid of that page's 9 Pokémon,
+    individually tappable. Reverts to the chip when zoomed back out.
+26. **Catching from the Binder Guide** — page-view cards are now tappable
+    to catch (confirm dialog, celebration, ✕ to un-mark), matching the
+    Species Index. Previously the Binder Guide was browse-only.
+27. **Catching lock** — replaced the two-button Catching Mode / Discovery
+    Mode tab with a single global 🔒/🔓 toggle top-right of the header.
+    Locked (default) = safe browse-only everywhere; unlocked = catching
+    enabled everywhere (Species Index, Binder Guide, Map view tiles).
 
 ## Known issues / lessons learned this build
 
@@ -323,6 +376,9 @@ Two tabs in one HTML file:
 - No true 3D model viewer (a literal spin-a-model request) — implemented
   instead as a CSS 3D-style rotation of 2D artwork/animated sprites,
   which was accepted as the practical solution.
+- Map view's detail-zoom threshold (scale ≥4.5x) is a fixed constant
+  (`HEATMAP_DETAIL_ZOOM`) tuned by feel, not derived from anything —
+  easy to adjust if it feels like it triggers too early/late.
 
 ## Version-bump checklist (do this every update)
 
@@ -438,13 +494,13 @@ Two tabs in one HTML file:
     line-height:20px;text-align:center;padding:0;opacity:.6;transition:opacity .12s, background .12s;
   }
   .mon .info-btn:hover{opacity:1;background:var(--ink);color:var(--panel);}
-  .mon .uncatch-btn{
+  .mon .uncatch-btn, .binder-fullcell .uncatch-btn{
     position:absolute;bottom:6px;right:6px;width:20px;height:20px;border-radius:50%;
     background:rgba(163,57,44,0.14);color:var(--stamp);border:none;cursor:pointer;
     font-size:.62rem;line-height:20px;text-align:center;padding:0;opacity:.6;
     transition:opacity .12s, background .12s;z-index:3;
   }
-  .mon .uncatch-btn:hover{opacity:1;background:var(--stamp);color:#fff;}
+  .mon .uncatch-btn:hover, .binder-fullcell .uncatch-btn:hover{opacity:1;background:var(--stamp);color:#fff;}
 
   .modal-overlay{
     position:fixed;inset:0;background:rgba(20,24,16,.55);display:flex;align-items:center;
@@ -589,17 +645,17 @@ Two tabs in one HTML file:
 
   .loading{text-align:center;padding:60px 20px;font-family:'JetBrains Mono',monospace;color:var(--ink-soft);}
 
-  .mode-bar{display:flex;gap:4px;margin-bottom:6px;}
-  .mode-btn{
-    font-family:'Fraunces',serif;font-weight:700;font-size:.88rem;flex:1;
-    padding:10px 14px;border:2px solid var(--ink);border-radius:6px;
-    background:transparent;color:var(--ink-soft);cursor:pointer;transition:.12s;
+  .header-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;}
+  .lock-toggle{
+    font-size:1.35rem;line-height:1;flex-shrink:0;padding:8px 12px;
+    border:2px solid var(--ink);border-radius:8px;background:var(--panel);
+    color:var(--ink);cursor:pointer;transition:.12s;
   }
-  .mode-btn.active{background:var(--ink);color:var(--panel);}
-  .mode-btn:not(.active):hover{border-color:var(--stamp);color:var(--ink);}
-  .mode-hint{
+  .lock-toggle:hover{border-color:var(--stamp);}
+  .lock-toggle.unlocked{background:var(--stamp);border-color:var(--stamp);}
+  .lock-hint{
     font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--ink-soft);
-    text-align:center;margin-bottom:16px;
+    margin-top:10px;
   }
   .view-tabs{display:flex;gap:4px;margin-bottom:18px;}
   .view-tab{
@@ -663,6 +719,25 @@ Two tabs in one HTML file:
   .hm-tile.hm-some{background:var(--hm-some);}
   .hm-tile.hm-most{background:var(--hm-most);}
   .hm-tile.hm-all{background:var(--hm-all);color:#3a2c08;}
+  .hm-tile.hm-detail{
+    padding:2px;display:flex;flex-direction:column;cursor:default;
+    background:var(--panel);
+  }
+  .hm-detail-label{
+    font-size:4px;text-align:center;line-height:1;margin-bottom:1px;
+    color:var(--ink-soft);
+  }
+  .hm-detail-grid{
+    flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:.5px;
+  }
+  .hm-mini{position:relative;background:rgba(0,0,0,.18);border-radius:1px;overflow:hidden;cursor:pointer;}
+  .hm-mini img{width:100%;height:100%;object-fit:contain;display:block;}
+  .hm-mini.caught{background:var(--hm-all);}
+  .hm-mini.empty{opacity:.12;cursor:default;}
+  .hm-mini-check{
+    position:absolute;bottom:0;right:0;font-size:3px;line-height:1;
+    color:#3a2c08;font-weight:900;
+  }
   .heatmap-hint{
     text-align:center;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--ink-soft);
     margin-top:8px;
@@ -706,7 +781,11 @@ Two tabs in one HTML file:
 <body>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v3.9.0</span></h1>
+    <div class="header-row">
+      <h1>The Full Index<span>every known species, sortable and searchable · v4.0.0</span></h1>
+      <button class="lock-toggle" id="lockToggle" aria-label="Toggle catching lock" title="Locked = browse only. Tap to unlock catching.">🔒</button>
+    </div>
+    <div class="lock-hint" id="lockHint">Locked — browsing only, nothing gets caught. Tap the lock to enable catching.</div>
   </header>
 
   <div class="panel">
@@ -719,12 +798,6 @@ Two tabs in one HTML file:
     </div>
     <div id="progressWrap"></div>
   </div>
-
-  <div class="mode-bar" id="modeBar">
-    <button class="mode-btn active" data-mode="catch">🎯 Catching Mode</button>
-    <button class="mode-btn" data-mode="discover">🔍 Discovery Mode</button>
-  </div>
-  <div class="mode-hint" id="modeHint">Tap a Pokémon to catch it (or catch/un-mark it).</div>
 
   <div class="view-tabs" id="viewTabs">
     <button class="view-tab active" data-view="index">Species Index</button>
@@ -902,11 +975,12 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '3.9.0';
+const APP_VERSION = '4.0.0';
 const STORAGE_KEY = 'pokedex-index-v1';
 const CAUGHT_KEY = 'pokedex-caught-v1';
 const AUTOBACKUP_KEY = 'pokedex-autobackup-v1';
-const MODE_KEY = 'pokedex-mode-v1';
+const MODE_KEY = 'pokedex-mode-v1'; // legacy — read once for migration only
+const LOCK_KEY = 'pokedex-lock-v1';
 
 let autoBackupEnabled = false;
 let dirtySinceExport = false;
@@ -962,24 +1036,64 @@ let rangeMode = '100';
 let activeRange = null; // [start,end] inclusive, or null for all
 let caughtFilter = 'all'; // all | yes | no
 let caughtIds = new Set();
-let appMode = 'catch'; // catch | discover
+// Catching lock: locked = pure discovery (browse only, nothing catchable);
+// unlocked = tapping catches, everywhere (Species Index, Binder Guide, Map
+// view). Defaults locked — the safe state for handing the phone over.
+let catchLocked = true;
 
-async function loadAppMode(){
+async function loadLockPref(){
+  let found = false;
   try{
-    const res = await window.storage.get(MODE_KEY, false);
-    if(res && res.value === 'discover') appMode = 'discover';
-  }catch(e){ /* default to catch mode */ }
-  applyModeUI();
+    const res = await window.storage.get(LOCK_KEY, false);
+    if(res && res.value){ catchLocked = res.value === 'locked'; found = true; }
+  }catch(e){ /* no saved lock pref yet */ }
+  if(!found){
+    // One-time migration from the old Catching Mode / Discovery Mode pref.
+    try{
+      const old = await window.storage.get(MODE_KEY, false);
+      if(old && old.value === 'catch') catchLocked = false;
+    }catch(e){ /* no legacy pref either — stay locked (default/safe) */ }
+  }
+  applyLockUI();
 }
-async function saveAppMode(){
-  try{ await window.storage.set(MODE_KEY, appMode, false); }
-  catch(e){ console.error('could not save mode', e); }
+async function saveLockPref(){
+  try{ await window.storage.set(LOCK_KEY, catchLocked ? 'locked' : 'unlocked', false); }
+  catch(e){ console.error('could not save lock pref', e); }
 }
-function applyModeUI(){
-  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode === appMode));
-  document.getElementById('modeHint').textContent = appMode === 'catch'
-    ? 'Tap a Pokémon to catch it (or use ✕ to un-mark).'
-    : "Discovery mode — browse and view details, nothing gets caught or removed.";
+function applyLockUI(){
+  const btn = document.getElementById('lockToggle');
+  btn.textContent = catchLocked ? '🔒' : '🔓';
+  btn.classList.toggle('unlocked', !catchLocked);
+  document.getElementById('lockHint').textContent = catchLocked
+    ? 'Locked — browsing only, nothing gets caught. Tap the lock to enable catching.'
+    : 'Unlocked — tap a Pokémon anywhere (Species Index, Binder Guide, Map view) to catch it.';
+}
+
+// Shared tap handler for any catchable Pokémon (Species Index card, Binder
+// Guide page cell, Map view mini-cell). Locked → just view details.
+// Unlocked → confirm-catch, or replay the celebration if already caught.
+function handleMonTap(id){
+  if(catchLocked){
+    openInfoModal(id);
+    return;
+  }
+  if(caughtIds.has(id)){
+    celebrate(id, starRating(id));
+    return;
+  }
+  const mon = allMons.find(m=>m.id===id);
+  const displayName = mon ? mon.name : `#${id}`;
+  if(window.confirm(`Mark ${displayName} as caught?`)){
+    const added = toggleCaught(id);
+    if(added) maybeCelebrate(id);
+  }
+}
+function handleUncatchTap(id){
+  const mon = allMons.find(m=>m.id===id);
+  const displayName = mon ? mon.name : `#${id}`;
+  if(window.confirm(`Remove ${displayName} from your caught list?`)){
+    toggleCaught(id);
+  }
 }
 
 async function loadCaught(){
@@ -1263,7 +1377,7 @@ function render(){
     return `
     <div class="mon${caughtIds.has(m.id) ? ' caught' : ''}${stars===5 ? ' rare' : ''}" data-id="${m.id}">
       ${caughtIds.has(m.id) ? '<div class="stamp">Caught</div>' : ''}
-      ${caughtIds.has(m.id) && appMode==='catch' ? `<button class="uncatch-btn" data-uncatch-id="${m.id}" aria-label="Remove from caught">✕</button>` : ''}
+      ${caughtIds.has(m.id) && !catchLocked ? `<button class="uncatch-btn" data-uncatch-id="${m.id}" aria-label="Remove from caught">✕</button>` : ''}
       <button class="info-btn" data-info-id="${m.id}" aria-label="More info">i</button>
       <div class="sprite-wrap">
         <img class="sprite" loading="lazy" alt="${m.name}"
@@ -1281,28 +1395,7 @@ function render(){
 
   content.innerHTML = `<div class="count-line">${list.length} shown</div><div class="grid">${grid}</div>`;
   content.querySelectorAll('.mon').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      const id = parseInt(el.dataset.id, 10);
-      if(appMode === 'discover'){
-        // Discovery mode — just looking. Tapping opens details, nothing
-        // gets caught or removed.
-        openInfoModal(id);
-        return;
-      }
-      if(caughtIds.has(id)){
-        // Already caught — replay the celebration instead of prompting to
-        // remove. Un-marking a mistaken catch uses the ✕ button, or the
-        // info pop-out (tap the "i" button, then the artwork).
-        celebrate(id, starRating(id));
-        return;
-      }
-      const mon = allMons.find(m=>m.id===id);
-      const displayName = mon ? mon.name : `#${id}`;
-      if(window.confirm(`Mark ${displayName} as caught?`)){
-        const added = toggleCaught(id);
-        if(added) maybeCelebrate(id);
-      }
-    });
+    el.addEventListener('click', ()=> handleMonTap(parseInt(el.dataset.id, 10)));
   });
   content.querySelectorAll('.info-btn').forEach(btn=>{
     btn.addEventListener('click', e=>{
@@ -1313,12 +1406,7 @@ function render(){
   content.querySelectorAll('.uncatch-btn').forEach(btn=>{
     btn.addEventListener('click', e=>{
       e.stopPropagation();
-      const id = parseInt(btn.dataset.uncatchId, 10);
-      const mon = allMons.find(m=>m.id===id);
-      const displayName = mon ? mon.name : `#${id}`;
-      if(window.confirm(`Remove ${displayName} from your caught list?`)){
-        toggleCaught(id);
-      }
+      handleUncatchTap(parseInt(btn.dataset.uncatchId, 10));
     });
   });
 }
@@ -1360,7 +1448,7 @@ async function openInfoModal(id){
     const heightM = (detail.height/10).toFixed(1);
     const weightKg = (detail.weight/10).toFixed(1);
     const abilities = detail.abilities.map(a=>titleCase(a.ability.name)).join(', ');
-    const big = appMode === 'discover';
+    const big = catchLocked;
 
     let factsHtml = '';
     if(species){
@@ -1383,12 +1471,12 @@ async function openInfoModal(id){
 
     box.innerHTML = `
       <button class="modal-close" id="modalCloseBtn">&times;</button>
-      <div class="sprite-tap-wrap${appMode==='discover' ? ' close-tap' : ''}${big ? ' discover-big' : ''}" id="spriteTapWrap">
+      <div class="sprite-tap-wrap${catchLocked ? ' close-tap' : ''}${big ? ' discover-big' : ''}" id="spriteTapWrap">
         <img class="modal-sprite" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png"
           onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png';">
         ${caughtIds.has(id) ? '<div class="modal-stamp">Caught</div>' : ''}
       </div>
-      <div class="tap-hint">${appMode==='discover' ? "Tap the artwork to close" : (caughtIds.has(id) ? 'Tap the artwork to un-mark' : 'Tap the artwork to confirm caught')}</div>
+      <div class="tap-hint">${catchLocked ? "Tap the artwork to close" : (caughtIds.has(id) ? 'Tap the artwork to un-mark' : 'Tap the artwork to confirm caught')}</div>
       <div class="modal-num">#${String(id).padStart(4,'0')}</div>
       <div class="modal-name">${mon ? mon.name : titleCase(detail.name)}</div>
       <div class="modal-types">
@@ -1405,7 +1493,7 @@ async function openInfoModal(id){
     `;
     document.getElementById('modalBox').classList.toggle('discover-wide', big);
     document.getElementById('modalCloseBtn').addEventListener('click', closeInfoModal);
-    if(appMode === 'discover'){
+    if(catchLocked){
       document.getElementById('spriteTapWrap').addEventListener('click', closeInfoModal);
     } else {
       document.getElementById('spriteTapWrap').addEventListener('click', ()=>{
@@ -1615,9 +1703,10 @@ function binderFullCellHtml(id){
   const dimmed = binderFiltersActive() && mon && !binderMonMatchesFilters(mon);
   const caught = caughtIds.has(id);
   return `
-    <div class="binder-fullcell${caught ? ' caught' : ''}${dimmed ? ' dimmed' : ''}">
+    <div class="binder-fullcell${caught ? ' caught' : ''}${dimmed ? ' dimmed' : ''}" data-id="${id}">
       <div class="bc-slot">${loc.slotOnPage}</div>
       ${caught ? '<div class="binder-stamp">Caught</div>' : ''}
+      ${caught && !catchLocked ? `<button class="uncatch-btn" data-uncatch-id="${id}" aria-label="Remove from caught">✕</button>` : ''}
       <img loading="lazy" alt="${mon ? mon.name : ''}"
         src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png"
         onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png';">
@@ -1647,6 +1736,16 @@ function renderBinderView(){
   document.getElementById('binderPageIndicator').textContent = `Page ${currentBinderPageIdx+1} of ${binderPagesData.length}`;
   document.getElementById('binderSkipBackBtn').disabled = currentBinderPageIdx === 0;
   document.getElementById('binderSkipFwdBtn').disabled = currentBinderPageIdx === binderPagesData.length-1;
+
+  document.querySelectorAll('#binderSwiper .binder-fullcell[data-id]').forEach(el=>{
+    el.addEventListener('click', ()=> handleMonTap(parseInt(el.dataset.id, 10)));
+  });
+  document.querySelectorAll('#binderSwiper .uncatch-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.stopPropagation();
+      handleUncatchTap(parseInt(btn.dataset.uncatchId, 10));
+    });
+  });
 }
 
 function goToBinderPageIdx(idx){
@@ -1670,10 +1769,17 @@ document.getElementById('binderSkipFwdBtn').addEventListener('click', ()=>{
 // Swipe gesture support
 (function(){
   const swiper = document.getElementById('binderSwiper');
-  let startX = null, startY = null;
+  let startX = null, startY = null, moved = false;
   swiper.addEventListener('touchstart', e=>{
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
+    moved = false;
+  }, { passive:true });
+  swiper.addEventListener('touchmove', e=>{
+    if(startX === null) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if(Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
   }, { passive:true });
   swiper.addEventListener('touchend', e=>{
     if(startX === null) return;
@@ -1685,20 +1791,47 @@ document.getElementById('binderSkipFwdBtn').addEventListener('click', ()=>{
     }
     startX = null; startY = null;
   });
+  // A real swipe shouldn't also fire tap-to-catch on whichever card the
+  // finger happened to lift over — swallow that one click.
+  swiper.addEventListener('click', e=>{
+    if(moved){ e.stopPropagation(); e.preventDefault(); moved = false; }
+  }, true);
 })();
 
 // --- Binder Heat Map ---
 // One tile per physical page, colour-coded by how much of it is caught.
 // Pannable/zoomable like a mind map: drag or pinch, or use the +/- buttons.
+// Past HEATMAP_DETAIL_ZOOM, each tile morphs from a coloured chip into a
+// real mini 3x3 grid of that page's 9 Pokémon — tappable just like the
+// full page view. The tile's underlying (unscaled) box size never
+// changes, only what's drawn inside it, so the CSS scale() transform
+// magnifies the mini grid right along with everything else — no jump,
+// no coordinate recalculation needed at the threshold.
 const HEATMAP_COLUMNS = 12;
+const HEATMAP_DETAIL_ZOOM = 4.5;
 let heatmapScale = 1, heatmapX = 0, heatmapY = 0;
 let heatmapInitialized = false;
+let heatmapDetailMode = false;
 
 function heatmapTileClass(ratio){
   if(ratio === 0) return 'hm-none';
   if(ratio === 1) return 'hm-all';
   if(ratio >= 0.5) return 'hm-most';
   return 'hm-some';
+}
+
+function hmMiniCellHtml(id){
+  if(!id) return '<div class="hm-mini empty"></div>';
+  const mon = allMons.find(m=>m.id===id);
+  const caught = caughtIds.has(id);
+  return `
+    <div class="hm-mini${caught ? ' caught' : ''}" data-hmid="${id}" title="${mon ? mon.name : ''}">
+      <img loading="lazy" alt="${mon ? mon.name : ''}"
+        src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png"
+        onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png';">
+      ${caught ? '<div class="hm-mini-check">✓</div>' : ''}
+    </div>
+  `;
 }
 
 function renderHeatmap(resetView){
@@ -1712,18 +1845,50 @@ function renderHeatmap(resetView){
     const cls = heatmapTileClass(ratio);
     const first = realIds[0], last = realIds[realIds.length-1];
     const label = `Page ${page.pageNum} · #${first}–${last} · ${caughtCount}/${realIds.length} caught`;
+    if(heatmapDetailMode){
+      return `
+        <div class="hm-tile hm-detail" data-idx="${idx}" title="${label}">
+          <div class="hm-detail-label">Pg ${page.pageNum}</div>
+          <div class="hm-detail-grid">${page.ids.map(hmMiniCellHtml).join('')}</div>
+        </div>
+      `;
+    }
     return `<div class="hm-tile ${cls}" data-idx="${idx}" title="${label}">${page.pageNum}</div>`;
   }).join('');
-  canvas.querySelectorAll('.hm-tile').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      const idx = parseInt(el.dataset.idx, 10);
-      exitHeatmap();
-      goToBinderPageIdx(idx);
-    });
-  });
   if(resetView || !heatmapInitialized){
     fitHeatmap();
     heatmapInitialized = true;
+  }
+}
+
+// Delegated once (not per-render) since tiles are rebuilt often. A tap on
+// a mini Pokémon (detail mode) catches/views it; a tap anywhere else on a
+// tile jumps to that page, same as before.
+document.getElementById('heatmapCanvas').addEventListener('click', e=>{
+  const mini = e.target.closest('.hm-mini');
+  if(mini){
+    if(!mini.dataset.hmid) return; // empty slot
+    e.stopPropagation();
+    // handleMonTap → toggleCaught() already re-renders the heatmap (incl.
+    // this mini grid) when a catch actually happens; nothing further to do.
+    handleMonTap(parseInt(mini.dataset.hmid, 10));
+    return;
+  }
+  const tile = e.target.closest('.hm-tile');
+  if(!tile) return;
+  const idx = parseInt(tile.dataset.idx, 10);
+  exitHeatmap();
+  goToBinderPageIdx(idx);
+});
+
+// Recompute detail vs. chip rendering only when the scale crosses the
+// threshold, not on every pixel of a pinch/scroll — cheap to check, and
+// avoids rebuilding ~100+ tiles' worth of DOM on every frame.
+function updateHeatmapDetail(){
+  const shouldDetail = heatmapScale >= HEATMAP_DETAIL_ZOOM;
+  if(shouldDetail !== heatmapDetailMode){
+    heatmapDetailMode = shouldDetail;
+    renderHeatmap(false);
   }
 }
 
@@ -1741,6 +1906,7 @@ function fitHeatmap(){
   heatmapX = (vw - cw*heatmapScale)/2;
   heatmapY = (vh - ch*heatmapScale)/2;
   applyHeatmapTransform();
+  updateHeatmapDetail();
 }
 
 function zoomHeatmapAt(clientX, clientY, factor){
@@ -1749,10 +1915,11 @@ function zoomHeatmapAt(clientX, clientY, factor){
   const localX = clientX!=null ? clientX-rect.left : viewport.clientWidth/2;
   const localY = clientY!=null ? clientY-rect.top : viewport.clientHeight/2;
   const canvasPoint = { x:(localX-heatmapX)/heatmapScale, y:(localY-heatmapY)/heatmapScale };
-  heatmapScale = Math.max(0.15, Math.min(heatmapScale*factor, 5));
+  heatmapScale = Math.max(0.15, Math.min(heatmapScale*factor, 9));
   heatmapX = localX - canvasPoint.x*heatmapScale;
   heatmapY = localY - canvasPoint.y*heatmapScale;
   applyHeatmapTransform();
+  updateHeatmapDetail();
 }
 
 function enterHeatmap(){
@@ -1816,10 +1983,11 @@ document.getElementById('heatmapFitBtn').addEventListener('click', ()=> fitHeatm
       const d = dist(t1,t2);
       const m = mid(t1,t2);
       const rect = viewport.getBoundingClientRect();
-      heatmapScale = Math.max(0.15, Math.min(pinchState.initialScale * (d/pinchState.initialDist), 5));
+      heatmapScale = Math.max(0.15, Math.min(pinchState.initialScale * (d/pinchState.initialDist), 9));
       heatmapX = (m.x-rect.left) - pinchState.canvasPoint.x*heatmapScale;
       heatmapY = (m.y-rect.top) - pinchState.canvasPoint.y*heatmapScale;
       applyHeatmapTransform();
+      updateHeatmapDetail();
     }
     e.preventDefault();
   }, { passive:false });
@@ -1973,13 +2141,13 @@ document.getElementById('viewTabs').addEventListener('click', e=>{
   if(view === 'binder') renderBinderView();
 });
 
-document.getElementById('modeBar').addEventListener('click', e=>{
-  const btn = e.target.closest('button[data-mode]');
-  if(!btn) return;
-  appMode = btn.dataset.mode;
-  saveAppMode();
-  applyModeUI();
+document.getElementById('lockToggle').addEventListener('click', ()=>{
+  catchLocked = !catchLocked;
+  saveLockPref();
+  applyLockUI();
   render();
+  const binderView = document.getElementById('binderView');
+  if(binderView && binderView.style.display !== 'none') renderBinderView();
 });
 
 function init(){
@@ -1990,7 +2158,7 @@ function init(){
   buildBinderRarityChips();
   buildBinderRangeButtons();
   loadAutoBackupPref();
-  loadAppMode();
+  loadLockPref();
   renderProgress();
   render();
 }
