@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 3.5.0
+  VERSION: 3.7.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -113,12 +113,218 @@
            Discovery Mode is browse-only: tapping any Pokémon (grid or
            info pop-out) just opens details — nothing gets caught or
            removed, safe to hand the phone over for browsing.
+  v3.6.0 — In Discovery Mode, the info pop-out artwork is now roughly
+           3x bigger and the pop-out itself widens to fit. Added a real
+           "interesting facts" panel too: official Pokédex flavor text,
+           species/genus, which generation it first appeared in, habitat,
+           color, shape, egg groups, and growth rate (all from PokeAPI's
+           species data, fetched on demand). Note: exact anime/TV debut
+           episodes aren't available from this data source, so "first
+           appeared in" reflects the games (generation), not the show.
+  v3.7.0 — Embedded the full HANDOFF.md content directly into this file
+           as a comment block (see below) — one file, one git history,
+           no more risk of a separate handoff doc drifting out of sync.
+           Attach index.html itself to a new Claude chat instead of a
+           separate file.
 
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
   "Data file" panel). Re-import that file after updating to a new version
   of this HTML to bring your progress back.
 -->
+<!-- ============================================================
+     HANDOFF DOCUMENT — for starting a new Claude chat session
+     Attach this index.html to a new chat and ask Claude to read this
+     comment block before continuing work. Kept in sync with the
+     changelog above on every version bump — see the checklist at the
+     end of this block.
+============================================================
+
+# Pokédex Tracker — Handover
+
+**This handoff is embedded directly in `index.html`** as an HTML comment
+near the top of the file, right after the version changelog comment —
+one file, one git history, no risk of a separate doc drifting out of
+sync. It's updated in place as part of every version bump (see the
+checklist near the bottom).
+
+## Starter text for a new chat
+
+Attach `index.html` itself and paste this to pick up where we left off:
+
+> I'm continuing work on a Pokémon card tracker app for my son. Full
+> context is in an HTML comment near the top of the attached index.html
+> — repo, live URL, architecture, full feature history, and known
+> issues are all in there. Please read it before we continue.
+
+---
+
+**Current version:** v3.7.0
+**Repo:** https://github.com/bengalebg23/Pokedex (public)
+**Live URL:** https://bengalebg23.github.io/Pokedex/
+**Main file:** `index.html` (single-file app, ~1,400 lines — HTML/CSS/JS all in one, including this handoff)
+**Also in repo:** `manifest.json`, `icon-192.png`, `icon-512.png` (PWA install support)
+
+Installed on Ben's Pixel home screen via Chrome → Add to Home Screen. Built for
+Ben's 6-year-old son Reuben to track a real Pokémon card collection and place
+cards into a physical binder (3×3 grid per page).
+
+---
+
+## What this app is
+
+Two tabs in one HTML file:
+
+1. **Species Index** — every Pokémon (#1–1025), with artwork, type badges,
+   a 5-star rarity rating, tap-to-mark-caught (with confirm dialog), an
+   info pop-out (height/weight/abilities/rarity, fetched on demand), and
+   filters (type, rarity, number range, caught status) plus search.
+2. **Binder Guide** — full-screen, swipeable, one physical page at a time,
+   matching a real binder: page 1 is single-sided with 9 slots (#1–9),
+   every page after that is a double-page spread of 18 (9 left + 9 right).
+   Has its own search/filters (type, rarity, "Every 100"/"Every 18" number
+   range, caught status — filters dim non-matching cards rather than
+   hiding them, since the physical layout can't rearrange). « / » buttons
+   skip 10 pages; swipe left/right also works.
+
+## Stack
+
+- Single HTML file, vanilla JS, no build step, no framework.
+- Fonts: Fraunces (display/serif), Inter (body), JetBrains Mono (data/numbers) via Google Fonts.
+- Aesthetic: kraft-paper/field-journal theme — ink-stamp "Caught" motif,
+  warm paper background, forest-green ink, red-brown stamp accent, gold
+  "want"/rarity accent. Distinct from the Meal Planner/House Ledger cream
+  aesthetic — this one's intentionally its own look.
+- Data source: PokeAPI (`pokeapi.co`) for species/type data (fetched once,
+  cached), and `raw.githubusercontent.com/PokeAPI/sprites` for artwork,
+  sprites, and animated Gen 1–5 sprites (#1–649 only).
+- Storage: a `window.storage` shim — uses Claude's artifact storage API
+  when running inside a Claude preview, and falls back to `localStorage`
+  automatically when hosted standalone (which is what makes it work on
+  GitHub Pages). Same file works in both places, no code changes needed.
+
+### Storage keys
+- `pokedex-index-v1` — cached species list (name/types/id), fetched once from PokeAPI.
+- `pokedex-caught-v1` — array of caught dex IDs.
+- `pokedex-autobackup-v1` — auto-backup toggle preference.
+- `pokedex-mode-v1` — Catching Mode / Discovery Mode preference.
+
+### Data portability
+- Export/Import buttons produce a `.txt` (JSON inside) file with caught
+  IDs + species cache — a real backup independent of the app/browser.
+- Optional auto-backup: downloads a fresh file ~10s after the last change
+  and on tab close/background (best-effort — mobile browsers can't
+  silently overwrite one file, so this creates a new download each time).
+
+## Full feature history (chronological)
+
+1. Full species index, type + number-range filters
+2. Click-to-mark-caught, caught/not-caught filter, ink stamp visual
+3. Progress counters (overall + per-generation/"set"), count/% toggle
+4. Export/import data file (portable backup independent of HTML version)
+5. Optional auto-backup (10s debounce + on close/background)
+6. Standalone-hosting storage shim (works outside Claude, e.g. GitHub Pages)
+7. Official artwork sprites on every card
+8. Info pop-out: height, weight, abilities, base XP (fetched on demand)
+9. Confirm-before-catch (native confirm dialog) — protects against
+   accidental taps, applied both on the main grid and the info pop-out
+10. Rarity system: Legendary/Mythical species always 5-star; others get a
+    deterministic 1–4 star rating from their dex number (fun scale, not
+    official game data — clearly caveated in-app)
+11. Sparkle catch celebrations, tiered by star rating (nothing at 1-star,
+    up to "LEGENDARY!!!!!!!" at 5-star)
+12. Rarity filter (5 chips)
+13. **Binder Guide** tab — full-screen swiper matching the real binder
+    layout, its own search/filters, page-skip buttons
+14. More obvious "caught" indicator in Binder Guide (stamp + glow + checkmark)
+15. PWA manifest + icons for home screen install (no browser chrome)
+16. Bigger, animated catch celebration — 3D-style spin, uses actual
+    animated in-game sprites for #1–649
+17. **"Page Complete!" celebration** — distinct, bigger gold pop-out with
+    shine sweep when the last slot on a binder page gets caught
+18. Toned down catch celebration: removed the 3D spin, replaced with a
+    slower calm scale-in (~double the old duration), on-screen time
+    roughly doubled too. Dropped the low-res animated sprite entirely —
+    high-res official artwork used everywhere now, including Binder
+    Guide cells (fixes blurry/pixelated look). Tapping an already-caught
+    Pokémon on the Species Index now replays its celebration instead of
+    prompting to remove it (un-marking still works via the info pop-out)
+19. Fix: the v3.3.0 "tap caught to replay" change made un-marking too
+    hard to find in practice — added an explicit ✕ button directly on
+    caught cards for quick removal, alongside the existing replay tap
+20. **Catching Mode / Discovery Mode toggle** — global switch, remembered
+    across sessions. Catching Mode is normal behaviour; Discovery Mode
+    makes every tap (grid or info pop-out) open details only — no catch
+    or un-catch possible — meant for safely handing the phone over to
+    browse
+21. Discovery Mode: info pop-out artwork ~3x bigger, pop-out widens to
+    match. Added an "interesting facts" panel using PokeAPI's species
+    endpoint — flavor text, genus, generation first appeared, habitat,
+    color, shape, egg groups, growth rate. Explicitly does NOT include
+    anime/TV debut info — that data isn't available from PokeAPI and
+    wasn't fabricated; "first appeared in" means game generation only.
+    Ben asked for TV debut specifically at one point — worth remembering
+    if he asks again, the honest answer is still "not available."
+22. Embedded this entire handoff document into index.html as a comment
+    block (this is now that embedded copy) — no more separate
+    HANDOFF.md to keep in sync
+
+## Known issues / lessons learned this build
+
+- **GitHub Pages requires a public repo** on the free plan — this was the
+  cause of an early 404. Fixed via Settings → General → Danger Zone →
+  Change visibility (not the Pages settings page itself).
+- **`index.html` must be lowercase exactly** — GitHub Pages URLs are
+  case-sensitive; a capital `I` caused a second 404 after the repo went public.
+- **Android silently renames duplicate downloads** (`file.html` →
+  `file(1).html`, `file(2).html`...) rather than overwriting. This caused
+  a real incident: v3.0.0 got pushed from a 9-month-stale first-ever
+  download because `cp` kept grabbing the same original filename. Fixed by:
+  - Naming every future output file with the version baked in
+    (`pokedex-v3.2.0.html`, not always `pokedex-list.html`)
+  - Habit of `grep -m1 "VERSION:" index.html` after every `cp`, before
+    committing, to confirm the right file landed
+- Termux workflow confirmed working: `git clone` once, then
+  `cp` → `grep VERSION` check → `git add -A` → `git commit` → `git push`
+  each update. Auth via Personal Access Token (classic, `repo` scope),
+  cached with `git config --global credential.helper store`.
+- **Standing rule from here on:** the embedded handoff comment in
+  `index.html` is edited (not regenerated from scratch) as part of every
+  version bump — new feature added to the history list, version bumped
+  at the top. Ben attaches `index.html` itself to a new chat with the
+  starter blurb (above) to get a fresh Claude session up to speed —
+  no separate file to keep track of.
+
+## Open threads / not yet done
+
+- **No service worker / offline caching** yet, unlike Meal Planner and
+  House Ledger which both have `sw.js` with versioned cache-busting. This
+  app currently requires a network connection to load (PokeAPI + sprite
+  fetches on first load, then cached; GitHub Pages fetch every open).
+  Ben was offered this and hasn't confirmed he wants it yet.
+- Rarity tiers 2–4 (Slightly Rare/Quite Rare/Rare) are a deterministic
+  but made-up scale — not sourced from anything official. Fine as-is,
+  just worth remembering if asked "why is X rated Y stars."
+- No true 3D model viewer (a literal spin-a-model request) — implemented
+  instead as a CSS 3D-style rotation of 2D artwork/animated sprites,
+  which was accepted as the practical solution.
+
+## Version-bump checklist (do this every update)
+
+1. Update the changelog comment block at the very top of `index.html`
+2. Update `VERSION:` in that same comment
+3. Update the visible version tag in the `<h1>` subtitle
+4. Update the `APP_VERSION` JS constant
+5. Update the embedded handoff comment (this document, inside
+   `index.html`) — add the new feature to the history list, bump the
+   version at the top, note anything newly open/resolved
+6. Save/export the file with the version number in the filename
+7. Termux: `cp` in → `grep VERSION` sanity check → commit with the
+   version number and a short description → push
+
+============================================================
+     END HANDOFF DOCUMENT
+============================================================ -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -231,13 +437,14 @@
   .modal-box{
     background:var(--panel);border:1px solid var(--line);border-radius:6px;max-width:360px;width:100%;
     padding:20px;position:relative;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);
+    max-height:88vh;overflow-y:auto;
   }
+  .modal-box.discover-wide{max-width:480px;}
   .modal-close{
     position:absolute;top:10px;right:12px;background:none;border:none;font-size:1.3rem;
     color:var(--ink-soft);cursor:pointer;line-height:1;
   }
   .modal-close:hover{color:var(--ink);}
-  .modal-box img.modal-sprite{width:140px;height:140px;object-fit:contain;display:block;margin:0 auto 8px;}
   .modal-box .modal-num{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--ink-soft);text-align:center;}
   .modal-box .modal-name{font-family:'Fraunces',serif;font-weight:900;font-size:1.4rem;text-align:center;margin:2px 0 10px;}
   .modal-box .modal-types{display:flex;gap:6px;justify-content:center;margin-bottom:16px;}
@@ -316,19 +523,28 @@
   @keyframes page-complete-shine-sweep{0%{left:-60%;}100%{left:140%;}}
   .sprite-tap-wrap{
     position:relative;width:140px;height:140px;margin:0 auto 4px;cursor:pointer;
-    border-radius:6px;transition:background .12s;
+    border-radius:6px;transition:background .12s, width .2s, height .2s;
   }
+  .sprite-tap-wrap.discover-big{width:420px;height:420px;max-width:100%;}
   .sprite-tap-wrap:hover{background:rgba(163,57,44,0.08);}
   .sprite-tap-wrap:active{background:rgba(163,57,44,0.15);}
   .sprite-tap-wrap.no-tap{cursor:default;}
   .sprite-tap-wrap.no-tap:hover, .sprite-tap-wrap.no-tap:active{background:transparent;}
-  .sprite-tap-wrap img.modal-sprite{margin:0;pointer-events:none;}
+  .sprite-tap-wrap img.modal-sprite{margin:0;pointer-events:none;width:100%;height:100%;object-fit:contain;}
   .sprite-tap-wrap .modal-stamp{
     position:absolute;top:6px;right:-10px;background:transparent;color:var(--stamp);
     border:2px solid var(--stamp);padding:1px 16px;font-family:'Fraunces',serif;font-weight:900;
     font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;transform:rotate(11deg);
     opacity:.9;pointer-events:none;border-radius:2px;
   }
+  .modal-flavor{
+    font-family:'Fraunces',serif;font-style:italic;font-size:.92rem;line-height:1.45;
+    border-left:3px solid var(--line);padding-left:12px;margin:12px 0 10px;color:var(--ink);
+  }
+  .modal-facts{border-top:1px solid var(--line);padding-top:10px;margin-top:4px;}
+  .modal-facts .fact-row{display:flex;justify-content:space-between;gap:10px;font-size:.82rem;padding:3px 0;}
+  .modal-facts .fact-row .k{font-family:'JetBrains Mono',monospace;font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);white-space:nowrap;}
+  .modal-facts .fact-row .v{font-weight:600;text-align:right;}
   .tap-hint{
     text-align:center;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--ink-soft);
     margin-bottom:10px;
@@ -441,7 +657,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v3.5.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v3.7.0</span></h1>
   </header>
 
   <div class="panel">
@@ -618,7 +834,7 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '3.5.0';
+const APP_VERSION = '3.7.0';
 const STORAGE_KEY = 'pokedex-index-v1';
 const CAUGHT_KEY = 'pokedex-caught-v1';
 const AUTOBACKUP_KEY = 'pokedex-autobackup-v1';
@@ -1038,6 +1254,15 @@ function render(){
 }
 
 const detailCache = {};
+const speciesCache = {};
+function cleanFlavorText(text){
+  return text.replace(/[\n\r\f\u000c]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function generationForId(id){
+  const g = GENERATIONS.find(gen => id >= gen.start && id <= gen.end);
+  return g ? g.name : '—';
+}
+
 async function openInfoModal(id){
   const overlay = document.getElementById('modalOverlay');
   const box = document.getElementById('modalBox');
@@ -1053,12 +1278,42 @@ async function openInfoModal(id){
       detail = await res.json();
       detailCache[id] = detail;
     }
+    let species = speciesCache[id];
+    if(!species){
+      try{
+        const sres = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${id}`);
+        species = await sres.json();
+        speciesCache[id] = species;
+      }catch(e){ species = null; }
+    }
+
     const heightM = (detail.height/10).toFixed(1);
     const weightKg = (detail.weight/10).toFixed(1);
     const abilities = detail.abilities.map(a=>titleCase(a.ability.name)).join(', ');
+    const big = appMode === 'discover';
+
+    let factsHtml = '';
+    if(species){
+      const genusEntry = species.genera.find(g=>g.language.name==='en');
+      const flavorEntry = species.flavor_text_entries.find(f=>f.language.name==='en');
+      const eggGroups = species.egg_groups.map(g=>titleCase(g.name)).join(', ') || '—';
+      factsHtml = `
+        ${flavorEntry ? `<div class="modal-flavor">"${cleanFlavorText(flavorEntry.flavor_text)}"</div>` : ''}
+        <div class="modal-facts">
+          <div class="fact-row"><span class="k">Species</span><span class="v">${genusEntry ? genusEntry.genus : '—'}</span></div>
+          <div class="fact-row"><span class="k">First seen in</span><span class="v">${generationForId(id)}</span></div>
+          <div class="fact-row"><span class="k">Habitat</span><span class="v">${species.habitat ? titleCase(species.habitat.name) : 'Unknown'}</span></div>
+          <div class="fact-row"><span class="k">Color</span><span class="v">${species.color ? titleCase(species.color.name) : '—'}</span></div>
+          <div class="fact-row"><span class="k">Shape</span><span class="v">${species.shape ? titleCase(species.shape.name) : '—'}</span></div>
+          <div class="fact-row"><span class="k">Egg groups</span><span class="v">${eggGroups}</span></div>
+          <div class="fact-row"><span class="k">Growth rate</span><span class="v">${species.growth_rate ? titleCase(species.growth_rate.name) : '—'}</span></div>
+        </div>
+      `;
+    }
+
     box.innerHTML = `
       <button class="modal-close" id="modalCloseBtn">&times;</button>
-      <div class="sprite-tap-wrap${appMode==='discover' ? ' no-tap' : ''}" id="spriteTapWrap">
+      <div class="sprite-tap-wrap${appMode==='discover' ? ' no-tap' : ''}${big ? ' discover-big' : ''}" id="spriteTapWrap">
         <img class="modal-sprite" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png"
           onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png';">
         ${caughtIds.has(id) ? '<div class="modal-stamp">Caught</div>' : ''}
@@ -1076,7 +1331,9 @@ async function openInfoModal(id){
         <div class="modal-stat-row"><span class="k">Abilities</span><span class="v">${abilities}</span></div>
         <div class="modal-stat-row"><span class="k">Base XP</span><span class="v">${detail.base_experience ?? '—'}</span></div>
       </div>
+      ${factsHtml}
     `;
+    document.getElementById('modalBox').classList.toggle('discover-wide', big);
     document.getElementById('modalCloseBtn').addEventListener('click', closeInfoModal);
     if(appMode !== 'discover'){
       document.getElementById('spriteTapWrap').addEventListener('click', ()=>{
