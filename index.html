@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 4.1.0
+  VERSION: 4.3.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -159,6 +159,28 @@
            bands. Fully-caught pages get a thin gold ring on top of the
            green fill so they still stand out at a glance. Legend swapped
            from four discrete swatches to a gradient bar.
+  v4.2.0 — Two additions:
+           1. Boot splash — a random Pokémon now flashes up for ~1.1s
+              every time the app opens (replacing a fixed image). New
+              Settings tab lets you choose the pool it's drawn from: all
+              1025, caught only, or uncaught only. Falls back to the full
+              pool if the chosen pool is empty (e.g. "caught only" before
+              anything's been caught).
+           2. New ⚙️ Settings tab alongside Species Index / Binder Guide,
+              currently holding the boot splash source setting.
+  v4.3.0 — Layout cleanup:
+           1. Species Index filters (search, type, number, rarity, caught
+              status) are now collapsed into a single "Search & filters"
+              expandable section, matching the Binder Guide's pattern,
+              instead of five always-open panels.
+           2. Data file (export/import, auto-backup) moved out of Species
+              Index and into the Settings tab.
+           3. The catching lock is now a CSS-drawn Poké Ball button (no
+              more emoji), moved out of the app-level header and into the
+              Species Index view, right above the "N shown" count line.
+              It's still global — unlocking it also unlocks catching in
+              Binder Guide and Map view — it just lives in the Species
+              Index tab now rather than the top of the whole app.
 
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
@@ -192,7 +214,7 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v4.1.0
+**Current version:** v4.3.0
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
 **Main file:** `index.html` (single-file app, ~1,600 lines — HTML/CSS/JS all in one, including this handoff)
@@ -232,7 +254,9 @@ Two tabs in one HTML file:
      jumps or needs recalculating at the detail threshold.
 
 ### Catching lock (replaces old Catching/Discovery Mode tabs)
-A single 🔒/🔓 button top-right of the header, global across both views.
+A CSS-drawn Poké Ball button, living in the Species Index view right above
+the "N shown" count line (not in the app-level header) — grey/desaturated
+when locked, full colour when unlocked. The state itself is still global.
 - **Locked (default, safe)** — tapping any Pokémon anywhere (grid, info
   pop-out, binder page, map tile) only opens details. Nothing gets
   caught or removed. Safe to hand the phone to Reuben.
@@ -265,6 +289,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 - `pokedex-lock-v1` — catching lock state ('locked' | 'unlocked'). Replaces
   the old `pokedex-mode-v1` ("Catching Mode"/"Discovery Mode"), which is
   still read once as a migration fallback if `pokedex-lock-v1` isn't set yet.
+- `pokedex-splash-source-v1` — boot splash pool ('all' | 'caught' | 'uncaught').
 
 ### Data portability
 - Export/Import buttons produce a `.txt` (JSON inside) file with caught
@@ -344,6 +369,21 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 28. **Map view continuous colour scale** — page tile colour is a smooth
     red → amber → green blend by caught ratio rather than a few fixed
     bands; fully-caught pages also get a thin gold ring on top.
+29. **Random boot splash** — a random Pokémon flashes up for ~1.1s on every
+    app open (fades out via CSS opacity, then removes itself from the DOM).
+    Doesn't wait on the species-list network fetch since artwork URLs are
+    built straight from the dex number.
+30. **⚙️ Settings tab** — new third view tab, now holding both the Data
+    file (export/import/auto-backup) panel and the boot splash source
+    setting (All 1025 / Caught only / Uncaught only).
+31. **Collapsible Species Index filters** — search/type/number/rarity/
+    caught-status panels are now tucked behind a "Search & filters"
+    toggle (same pattern as Binder Guide's), collapsed by default.
+32. **Poké Ball lock button** — replaced the 🔒/🔓 emoji with a small
+    CSS-drawn Poké Ball (no external image/IP dependency), moved from
+    the app header down into the Species Index view, directly above the
+    "N shown" line. Still a global toggle — grey when locked, full colour
+    when unlocked.
 
 ## Known issues / lessons learned this build
 
@@ -387,6 +427,15 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 - Map view's detail-zoom threshold (scale ≥4.5x) is a fixed constant
   (`HEATMAP_DETAIL_ZOOM`) tuned by feel, not derived from anything —
   easy to adjust if it feels like it triggers too early/late.
+- The "random Pokémon flashes on boot" feature (v4.2.0) is an **in-app**
+  splash overlay drawn by this file's own JS/CSS — not the native
+  Android/Chrome PWA splash screen (that one's generated from
+  `manifest.json` + `icon-192.png`/`icon-512.png` and shown before any of
+  this page's JS runs, so it can't be made dynamic with standard web
+  tech). If a static Pikachu/star image is still flashing *before* this
+  splash appears, that's the manifest icon — swap `icon-192.png` and
+  `icon-512.png` in the repo to change it, but it'll always be one fixed
+  image, not a random pick.
 
 ## Version-bump checklist (do this every update)
 
@@ -424,6 +473,23 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   body{
     margin:0; background:var(--paper); color:var(--ink); font-family:'Inter',sans-serif;
     min-height:100vh; padding-bottom:60px;
+  }
+  .boot-splash{
+    position:fixed;inset:0;z-index:999;
+    background:var(--paper);
+    display:flex;align-items:center;justify-content:center;
+    transition:opacity .4s ease;
+  }
+  .boot-splash.boot-splash-hide{opacity:0;pointer-events:none;}
+  .boot-splash-inner{display:flex;flex-direction:column;align-items:center;gap:14px;}
+  .boot-splash-inner img{
+    width:150px;height:150px;object-fit:contain;
+    filter:drop-shadow(0 6px 14px rgba(0,0,0,.25));
+    transition:opacity .25s ease;
+  }
+  .boot-splash-label{
+    font-family:'Fraunces',serif;font-weight:900;font-size:1.1rem;
+    color:var(--ink);letter-spacing:.02em;
   }
   .wrap{max-width:1100px;margin:0 auto;padding:28px 20px 0;}
   header{border-bottom:3px double var(--ink); padding-bottom:16px; margin-bottom:20px;}
@@ -653,18 +719,19 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 
   .loading{text-align:center;padding:60px 20px;font-family:'JetBrains Mono',monospace;color:var(--ink-soft);}
 
-  .header-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;}
-  .lock-toggle{
-    font-size:1.35rem;line-height:1;flex-shrink:0;padding:8px 12px;
-    border:2px solid var(--ink);border-radius:8px;background:var(--panel);
-    color:var(--ink);cursor:pointer;transition:.12s;
+  .index-content-toolbar{display:flex;justify-content:flex-end;margin-bottom:10px;}
+  .pokeball-btn{
+    width:34px;height:34px;border-radius:50%;flex-shrink:0;padding:0;cursor:pointer;
+    border:2px solid var(--ink);position:relative;overflow:hidden;
+    background:linear-gradient(to bottom, #e0393f 0%, #e0393f 46%, var(--ink) 46%, var(--ink) 54%, #f5f0e6 54%, #f5f0e6 100%);
+    transition:transform .12s, filter .12s;
   }
-  .lock-toggle:hover{border-color:var(--stamp);}
-  .lock-toggle.unlocked{background:var(--stamp);border-color:var(--stamp);}
-  .lock-hint{
-    font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--ink-soft);
-    margin-top:10px;
+  .pokeball-btn::after{
+    content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:12px;height:12px;border-radius:50%;background:#f5f0e6;border:2px solid var(--ink);
   }
+  .pokeball-btn:hover{transform:scale(1.06);}
+  .pokeball-btn.locked{filter:grayscale(.8) brightness(.92);}
   .view-tabs{display:flex;gap:4px;margin-bottom:18px;}
   .view-tab{
     font-family:'Fraunces',serif;font-weight:700;font-size:.95rem;
@@ -784,13 +851,15 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 </style>
 </head>
 <body>
+<div class="boot-splash" id="bootSplash">
+  <div class="boot-splash-inner">
+    <img id="bootSplashImg" alt="" src="">
+    <div class="boot-splash-label">The Full Index</div>
+  </div>
+</div>
 <div class="wrap">
   <header>
-    <div class="header-row">
-      <h1>The Full Index<span>every known species, sortable and searchable · v4.1.0</span></h1>
-      <button class="lock-toggle" id="lockToggle" aria-label="Toggle catching lock" title="Locked = browse only. Tap to unlock catching.">🔒</button>
-    </div>
-    <div class="lock-hint" id="lockHint">Locked — browsing only, nothing gets caught. Tap the lock to enable catching.</div>
+    <h1>The Full Index<span>every known species, sortable and searchable · v4.3.0</span></h1>
   </header>
 
   <div class="panel">
@@ -807,9 +876,16 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   <div class="view-tabs" id="viewTabs">
     <button class="view-tab active" data-view="index">Species Index</button>
     <button class="view-tab" data-view="binder">Binder Guide</button>
+    <button class="view-tab" data-view="settings">⚙️ Settings</button>
   </div>
 
   <div id="indexView">
+
+  <div class="binder-toolbar">
+    <button class="binder-filters-toggle" id="indexFiltersToggle">Search & filters</button>
+  </div>
+
+  <div class="binder-filters-panel" id="indexFiltersPanel">
 
   <div class="panel">
     <h2>Search</h2>
@@ -844,23 +920,10 @@ yet under the new key, it's migrated once to "unlocked" automatically.
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Data file</h2>
-    <p style="margin:0 0 12px;font-size:.85rem;color:var(--ink-soft);">
-      Your progress lives in this app, but it's worth keeping a copy of your own.
-      Export it as a text file and save it to your phone — if you ever load a newer
-      version of this tracker, import that file to bring your progress back.
-    </p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="btn-data" id="exportBtn">Export data file</button>
-      <label class="btn-data" for="importFile" style="cursor:pointer;">Import data file</label>
-      <input type="file" id="importFile" accept=".txt,.json" style="display:none;">
-    </div>
-    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:.85rem;cursor:pointer;">
-      <input type="checkbox" id="autoBackupToggle">
-      Auto-backup — download a fresh file ~10s after each change, and on close
-    </label>
-    <div class="status-line" id="dataStatus"></div>
+  </div>
+
+  <div class="index-content-toolbar">
+    <button class="pokeball-btn" id="lockToggle" aria-label="Catching locked — tap to unlock" title="Locked = browse only. Tap to unlock catching."></button>
   </div>
 
   <div id="content">
@@ -938,6 +1001,41 @@ yet under the new key, it's migrated once to "unlocked" automatically.
     </div>
   </div>
 
+  <div id="settingsView" style="display:none;">
+    <div class="panel">
+      <h2>Data file</h2>
+      <p style="margin:0 0 12px;font-size:.85rem;color:var(--ink-soft);">
+        Your progress lives in this app, but it's worth keeping a copy of your own.
+        Export it as a text file and save it to your phone — if you ever load a newer
+        version of this tracker, import that file to bring your progress back.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn-data" id="exportBtn">Export data file</button>
+        <label class="btn-data" for="importFile" style="cursor:pointer;">Import data file</label>
+        <input type="file" id="importFile" accept=".txt,.json" style="display:none;">
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:.85rem;cursor:pointer;">
+        <input type="checkbox" id="autoBackupToggle">
+        Auto-backup — download a fresh file ~10s after each change, and on close
+      </label>
+      <div class="status-line" id="dataStatus"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Boot splash</h2>
+      <p style="margin:0 0 12px;font-size:.85rem;color:var(--ink-soft);">
+        Every time the app opens, a random Pokémon flashes up for a moment
+        before settling into your last screen. Choose which pool it's
+        drawn from.
+      </p>
+      <div class="seg" id="splashSourceMode">
+        <button class="active" data-splash="all">All 1025</button>
+        <button data-splash="caught">Caught only</button>
+        <button data-splash="uncaught">Uncaught only</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <div class="modal-overlay" id="modalOverlay" style="display:none;">
@@ -979,12 +1077,13 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '4.1.0';
+const APP_VERSION = '4.3.0';
 const STORAGE_KEY = 'pokedex-index-v1';
 const CAUGHT_KEY = 'pokedex-caught-v1';
 const AUTOBACKUP_KEY = 'pokedex-autobackup-v1';
 const MODE_KEY = 'pokedex-mode-v1'; // legacy — read once for migration only
 const LOCK_KEY = 'pokedex-lock-v1';
+const SPLASH_SOURCE_KEY = 'pokedex-splash-source-v1';
 
 let autoBackupEnabled = false;
 let dirtySinceExport = false;
@@ -1066,11 +1165,11 @@ async function saveLockPref(){
 }
 function applyLockUI(){
   const btn = document.getElementById('lockToggle');
-  btn.textContent = catchLocked ? '🔒' : '🔓';
-  btn.classList.toggle('unlocked', !catchLocked);
-  document.getElementById('lockHint').textContent = catchLocked
-    ? 'Locked — browsing only, nothing gets caught. Tap the lock to enable catching.'
-    : 'Unlocked — tap a Pokémon anywhere (Species Index, Binder Guide, Map view) to catch it.';
+  btn.classList.toggle('locked', catchLocked);
+  btn.title = catchLocked
+    ? 'Locked = browse only. Tap to unlock catching (Species Index, Binder Guide, Map view).'
+    : 'Unlocked — tap a Pokémon anywhere to catch it. Tap to lock again.';
+  btn.setAttribute('aria-label', catchLocked ? 'Catching locked — tap to unlock' : 'Catching unlocked — tap to lock');
 }
 
 // Shared tap handler for any catchable Pokémon (Species Index card, Binder
@@ -1098,6 +1197,60 @@ function handleUncatchTap(id){
   if(window.confirm(`Remove ${displayName} from your caught list?`)){
     toggleCaught(id);
   }
+}
+
+// --- Boot splash ---
+// A random Pokémon flashes up for a moment on every app open. The pool it's
+// drawn from is a Settings preference; picking doesn't need the full species
+// list (artwork URLs are built straight from the dex number), so this can
+// run immediately on boot without waiting on the network fetch in loadIndex().
+let splashSourceMode = 'all'; // all | caught | uncaught
+
+async function loadSplashSourcePref(){
+  try{
+    const res = await window.storage.get(SPLASH_SOURCE_KEY, false);
+    if(res && res.value && ['all','caught','uncaught'].includes(res.value)){
+      splashSourceMode = res.value;
+    }
+  }catch(e){ /* default to 'all' */ }
+  applySplashSourceUI();
+}
+async function saveSplashSourcePref(){
+  try{ await window.storage.set(SPLASH_SOURCE_KEY, splashSourceMode, false); }
+  catch(e){ console.error('could not save splash source pref', e); }
+}
+function applySplashSourceUI(){
+  document.querySelectorAll('#splashSourceMode button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.splash === splashSourceMode);
+  });
+}
+
+function pickSplashId(){
+  if(splashSourceMode === 'caught' && caughtIds.size > 0){
+    const arr = [...caughtIds];
+    return arr[Math.floor(Math.random()*arr.length)];
+  }
+  if(splashSourceMode === 'uncaught' && caughtIds.size < MAX_DEX){
+    let id;
+    do{ id = 1 + Math.floor(Math.random()*MAX_DEX); } while(caughtIds.has(id));
+    return id;
+  }
+  // 'all' mode, or a fallback when the caught/uncaught pool is empty
+  return 1 + Math.floor(Math.random()*MAX_DEX);
+}
+
+function showBootSplash(){
+  const overlay = document.getElementById('bootSplash');
+  const img = document.getElementById('bootSplashImg');
+  const id = pickSplashId();
+  img.style.opacity = 0;
+  img.addEventListener('load', ()=>{ img.style.opacity = 1; }, { once:true });
+  img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
+  img.onerror = ()=>{ img.onerror = null; img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`; };
+  setTimeout(()=>{
+    overlay.classList.add('boot-splash-hide');
+    setTimeout(()=> overlay.remove(), 450);
+  }, 1100);
 }
 
 async function loadCaught(){
@@ -1224,6 +1377,8 @@ function titleCase(name){
 
 async function loadIndex(){
   await loadCaught();
+  await loadSplashSourcePref();
+  showBootSplash();
   try{
     const cached = await window.storage.get(STORAGE_KEY, false);
     if(cached && cached.value){
@@ -2041,6 +2196,13 @@ document.getElementById('binderFiltersToggle').addEventListener('click', ()=>{
   btn.classList.toggle('active');
 });
 
+document.getElementById('indexFiltersToggle').addEventListener('click', ()=>{
+  const panel = document.getElementById('indexFiltersPanel');
+  const btn = document.getElementById('indexFiltersToggle');
+  panel.classList.toggle('open');
+  btn.classList.toggle('active');
+});
+
 document.getElementById('binderSearch').addEventListener('input', e=>{
   const q = e.target.value.trim().toLowerCase();
   const resultEl = document.getElementById('binderSearchResult');
@@ -2153,7 +2315,16 @@ document.getElementById('viewTabs').addEventListener('click', e=>{
   const view = btn.dataset.view;
   document.getElementById('indexView').style.display = view === 'index' ? 'block' : 'none';
   document.getElementById('binderView').style.display = view === 'binder' ? 'block' : 'none';
+  document.getElementById('settingsView').style.display = view === 'settings' ? 'block' : 'none';
   if(view === 'binder') renderBinderView();
+});
+
+document.getElementById('splashSourceMode').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-splash]');
+  if(!btn) return;
+  splashSourceMode = btn.dataset.splash;
+  saveSplashSourcePref();
+  applySplashSourceUI();
 });
 
 document.getElementById('lockToggle').addEventListener('click', ()=>{
