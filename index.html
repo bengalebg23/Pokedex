@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 3.7.0
+  VERSION: 3.8.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -126,6 +126,9 @@
            no more risk of a separate handoff doc drifting out of sync.
            Attach index.html itself to a new Claude chat instead of a
            separate file.
+  v3.8.0 — In Discovery Mode, tapping the artwork in the info pop-out
+           now closes the pop-out (instead of doing nothing). The close
+           (×) button still works too.
 
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
@@ -159,7 +162,7 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v3.7.0
+**Current version:** v3.8.0
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
 **Main file:** `index.html` (single-file app, ~1,400 lines — HTML/CSS/JS all in one, including this handoff)
@@ -268,6 +271,8 @@ Two tabs in one HTML file:
 22. Embedded this entire handoff document into index.html as a comment
     block (this is now that embedded copy) — no more separate
     HANDOFF.md to keep in sync
+23. Discovery Mode: tapping the artwork in the info pop-out now closes
+    it (previously did nothing — the × button was the only way out)
 
 ## Known issues / lessons learned this build
 
@@ -528,8 +533,8 @@ Two tabs in one HTML file:
   .sprite-tap-wrap.discover-big{width:420px;height:420px;max-width:100%;}
   .sprite-tap-wrap:hover{background:rgba(163,57,44,0.08);}
   .sprite-tap-wrap:active{background:rgba(163,57,44,0.15);}
-  .sprite-tap-wrap.no-tap{cursor:default;}
-  .sprite-tap-wrap.no-tap:hover, .sprite-tap-wrap.no-tap:active{background:transparent;}
+  .sprite-tap-wrap.close-tap:hover{background:rgba(34,48,31,0.08);}
+  .sprite-tap-wrap.close-tap:active{background:rgba(34,48,31,0.14);}
   .sprite-tap-wrap img.modal-sprite{margin:0;pointer-events:none;width:100%;height:100%;object-fit:contain;}
   .sprite-tap-wrap .modal-stamp{
     position:absolute;top:6px;right:-10px;background:transparent;color:var(--stamp);
@@ -657,7 +662,7 @@ Two tabs in one HTML file:
 <body>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v3.7.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v3.8.0</span></h1>
   </header>
 
   <div class="panel">
@@ -834,7 +839,7 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '3.7.0';
+const APP_VERSION = '3.8.0';
 const STORAGE_KEY = 'pokedex-index-v1';
 const CAUGHT_KEY = 'pokedex-caught-v1';
 const AUTOBACKUP_KEY = 'pokedex-autobackup-v1';
@@ -1313,12 +1318,12 @@ async function openInfoModal(id){
 
     box.innerHTML = `
       <button class="modal-close" id="modalCloseBtn">&times;</button>
-      <div class="sprite-tap-wrap${appMode==='discover' ? ' no-tap' : ''}${big ? ' discover-big' : ''}" id="spriteTapWrap">
+      <div class="sprite-tap-wrap${appMode==='discover' ? ' close-tap' : ''}${big ? ' discover-big' : ''}" id="spriteTapWrap">
         <img class="modal-sprite" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png"
           onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png';">
         ${caughtIds.has(id) ? '<div class="modal-stamp">Caught</div>' : ''}
       </div>
-      <div class="tap-hint">${appMode==='discover' ? "Discovery mode — just browsing" : (caughtIds.has(id) ? 'Tap the artwork to un-mark' : 'Tap the artwork to confirm caught')}</div>
+      <div class="tap-hint">${appMode==='discover' ? "Tap the artwork to close" : (caughtIds.has(id) ? 'Tap the artwork to un-mark' : 'Tap the artwork to confirm caught')}</div>
       <div class="modal-num">#${String(id).padStart(4,'0')}</div>
       <div class="modal-name">${mon ? mon.name : titleCase(detail.name)}</div>
       <div class="modal-types">
@@ -1335,7 +1340,9 @@ async function openInfoModal(id){
     `;
     document.getElementById('modalBox').classList.toggle('discover-wide', big);
     document.getElementById('modalCloseBtn').addEventListener('click', closeInfoModal);
-    if(appMode !== 'discover'){
+    if(appMode === 'discover'){
+      document.getElementById('spriteTapWrap').addEventListener('click', closeInfoModal);
+    } else {
       document.getElementById('spriteTapWrap').addEventListener('click', ()=>{
         const displayName = mon ? mon.name : titleCase(detail.name);
         const question = caughtIds.has(id)
