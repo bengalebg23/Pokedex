@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 3.8.0
+  VERSION: 3.9.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -129,6 +129,12 @@
   v3.8.0 — In Discovery Mode, tapping the artwork in the info pop-out
            now closes the pop-out (instead of doing nothing). The close
            (×) button still works too.
+  v3.9.0 — New Binder Guide "Map view": a zoomed-out, pannable/zoomable
+           overview of every physical page as a colour-coded tile —
+           dark red (none caught), amber (some), green (most), gold
+           (all). Defaults to a "fit all" zoomed-out view; drag or
+           pinch to pan/zoom, or use the +/− buttons. Tap a tile to
+           jump straight to that page.
 
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
@@ -162,7 +168,7 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v3.8.0
+**Current version:** v3.9.0
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
 **Main file:** `index.html` (single-file app, ~1,400 lines — HTML/CSS/JS all in one, including this handoff)
@@ -273,6 +279,10 @@ Two tabs in one HTML file:
     HANDOFF.md to keep in sync
 23. Discovery Mode: tapping the artwork in the info pop-out now closes
     it (previously did nothing — the × button was the only way out)
+24. **Binder Guide "Map view"** — zoomed-out, pannable/zoomable overview
+    of every physical page as a colour-coded tile (dark red/amber/
+    green/gold by caught ratio). Pan via drag, zoom via pinch or +/−
+    buttons, "Fit all" resets the view. Tap a tile to jump to that page.
 
 ## Known issues / lessons learned this build
 
@@ -344,6 +354,7 @@ Two tabs in one HTML file:
 <style>
   :root{
     --paper:#e7e2c8; --panel:#faf7ea; --ink:#22301f; --ink-soft:#54614c; --line:#b6ac86; --stamp:#a3392c;
+    --hm-none:#7a2318; --hm-some:#c9862b; --hm-most:#4a7a3d; --hm-all:#d4af37;
   }
   *{box-sizing:border-box;}
   body{
@@ -623,6 +634,39 @@ Two tabs in one HTML file:
   .binder-filters-panel.open{display:block;}
 
   .binder-swiper-wrap{display:flex;align-items:stretch;}
+
+  .heatmap-controls{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+  .heatmap-legend{display:flex;align-items:center;gap:12px;margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--ink-soft);flex-wrap:wrap;}
+  .heatmap-legend span{display:flex;align-items:center;gap:4px;}
+  .hm-swatch{display:inline-block;width:11px;height:11px;border-radius:3px;}
+  .hm-swatch.hm-none{background:var(--hm-none);}
+  .hm-swatch.hm-some{background:var(--hm-some);}
+  .hm-swatch.hm-most{background:var(--hm-most);}
+  .hm-swatch.hm-all{background:var(--hm-all);}
+  .heatmap-viewport{
+    position:relative;overflow:hidden;min-height:calc(100vh - 260px);
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;
+    touch-action:none;cursor:grab;
+  }
+  .heatmap-viewport:active{cursor:grabbing;}
+  .heatmap-canvas{
+    position:absolute;top:0;left:0;transform-origin:0 0;
+    display:grid;gap:6px;will-change:transform;
+  }
+  .hm-tile{
+    width:42px;height:42px;border-radius:5px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:700;color:rgba(255,255,255,.85);
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.15);
+  }
+  .hm-tile.hm-none{background:var(--hm-none);}
+  .hm-tile.hm-some{background:var(--hm-some);}
+  .hm-tile.hm-most{background:var(--hm-most);}
+  .hm-tile.hm-all{background:var(--hm-all);color:#3a2c08;}
+  .heatmap-hint{
+    text-align:center;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--ink-soft);
+    margin-top:8px;
+  }
   #binderSwiper{
     flex:1;min-height:calc(100vh - 200px);
     background:var(--panel);border:1px solid var(--line);border-radius:6px;
@@ -662,7 +706,7 @@ Two tabs in one HTML file:
 <body>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v3.8.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v3.9.0</span></h1>
   </header>
 
   <div class="panel">
@@ -750,7 +794,8 @@ Two tabs in one HTML file:
   <div id="binderView" style="display:none;">
     <div class="binder-toolbar">
       <button class="binder-filters-toggle" id="binderFiltersToggle">Search & filters</button>
-      <div class="binder-skip-group">
+      <button class="binder-filters-toggle" id="binderMapToggle">🗺️ Map view</button>
+      <div class="binder-skip-group" id="binderSkipGroup">
         <button class="skip-btn" id="binderSkipBackBtn" aria-label="Back 10 pages">«</button>
         <div class="page-indicator" id="binderPageIndicator"></div>
         <button class="skip-btn" id="binderSkipFwdBtn" aria-label="Forward 10 pages">»</button>
@@ -793,8 +838,26 @@ Two tabs in one HTML file:
       </div>
     </div>
 
-    <div class="binder-swiper-wrap">
+    <div class="binder-swiper-wrap" id="binderSwiperWrap">
       <div id="binderSwiper"></div>
+    </div>
+
+    <div class="heatmap-wrap" id="heatmapWrap" style="display:none;">
+      <div class="heatmap-controls">
+        <button class="skip-btn" id="heatmapZoomOut" aria-label="Zoom out">−</button>
+        <button class="skip-btn" id="heatmapFitBtn">Fit all</button>
+        <button class="skip-btn" id="heatmapZoomIn" aria-label="Zoom in">+</button>
+        <div class="heatmap-legend">
+          <span><i class="hm-swatch hm-none"></i>None</span>
+          <span><i class="hm-swatch hm-some"></i>Some</span>
+          <span><i class="hm-swatch hm-most"></i>Most</span>
+          <span><i class="hm-swatch hm-all"></i>All</span>
+        </div>
+      </div>
+      <div class="heatmap-viewport" id="heatmapViewport">
+        <div class="heatmap-canvas" id="heatmapCanvas"></div>
+      </div>
+      <div class="heatmap-hint">Drag to pan · pinch or use +/− to zoom · tap a page to jump to it</div>
     </div>
   </div>
 
@@ -839,7 +902,7 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '3.8.0';
+const APP_VERSION = '3.9.0';
 const STORAGE_KEY = 'pokedex-index-v1';
 const CAUGHT_KEY = 'pokedex-caught-v1';
 const AUTOBACKUP_KEY = 'pokedex-autobackup-v1';
@@ -951,6 +1014,8 @@ function toggleCaught(id){
   renderProgress();
   const binderView = document.getElementById('binderView');
   if(binderView && binderView.style.display !== 'none') renderBinderView();
+  const heatmapWrap = document.getElementById('heatmapWrap');
+  if(heatmapWrap && heatmapWrap.style.display !== 'none') renderHeatmap(false);
   if(added && page && !wasComplete && isPageComplete(page)){
     celebratePageComplete(page);
   }
@@ -1620,6 +1685,170 @@ document.getElementById('binderSkipFwdBtn').addEventListener('click', ()=>{
     }
     startX = null; startY = null;
   });
+})();
+
+// --- Binder Heat Map ---
+// One tile per physical page, colour-coded by how much of it is caught.
+// Pannable/zoomable like a mind map: drag or pinch, or use the +/- buttons.
+const HEATMAP_COLUMNS = 12;
+let heatmapScale = 1, heatmapX = 0, heatmapY = 0;
+let heatmapInitialized = false;
+
+function heatmapTileClass(ratio){
+  if(ratio === 0) return 'hm-none';
+  if(ratio === 1) return 'hm-all';
+  if(ratio >= 0.5) return 'hm-most';
+  return 'hm-some';
+}
+
+function renderHeatmap(resetView){
+  if(binderPagesData.length === 0) binderPagesData = buildBinderPages();
+  const canvas = document.getElementById('heatmapCanvas');
+  canvas.style.gridTemplateColumns = `repeat(${HEATMAP_COLUMNS}, 42px)`;
+  canvas.innerHTML = binderPagesData.map((page, idx)=>{
+    const realIds = page.ids.filter(x=>x);
+    const caughtCount = realIds.filter(i=>caughtIds.has(i)).length;
+    const ratio = realIds.length ? caughtCount/realIds.length : 0;
+    const cls = heatmapTileClass(ratio);
+    const first = realIds[0], last = realIds[realIds.length-1];
+    const label = `Page ${page.pageNum} · #${first}–${last} · ${caughtCount}/${realIds.length} caught`;
+    return `<div class="hm-tile ${cls}" data-idx="${idx}" title="${label}">${page.pageNum}</div>`;
+  }).join('');
+  canvas.querySelectorAll('.hm-tile').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const idx = parseInt(el.dataset.idx, 10);
+      exitHeatmap();
+      goToBinderPageIdx(idx);
+    });
+  });
+  if(resetView || !heatmapInitialized){
+    fitHeatmap();
+    heatmapInitialized = true;
+  }
+}
+
+function applyHeatmapTransform(){
+  document.getElementById('heatmapCanvas').style.transform = `translate(${heatmapX}px, ${heatmapY}px) scale(${heatmapScale})`;
+}
+
+function fitHeatmap(){
+  const viewport = document.getElementById('heatmapViewport');
+  const canvas = document.getElementById('heatmapCanvas');
+  const vw = viewport.clientWidth, vh = viewport.clientHeight;
+  const cw = canvas.scrollWidth, ch = canvas.scrollHeight;
+  if(!cw || !ch || !vw || !vh) return;
+  heatmapScale = Math.max(0.15, Math.min(Math.min(vw/cw, vh/ch) * 0.92, 4));
+  heatmapX = (vw - cw*heatmapScale)/2;
+  heatmapY = (vh - ch*heatmapScale)/2;
+  applyHeatmapTransform();
+}
+
+function zoomHeatmapAt(clientX, clientY, factor){
+  const viewport = document.getElementById('heatmapViewport');
+  const rect = viewport.getBoundingClientRect();
+  const localX = clientX!=null ? clientX-rect.left : viewport.clientWidth/2;
+  const localY = clientY!=null ? clientY-rect.top : viewport.clientHeight/2;
+  const canvasPoint = { x:(localX-heatmapX)/heatmapScale, y:(localY-heatmapY)/heatmapScale };
+  heatmapScale = Math.max(0.15, Math.min(heatmapScale*factor, 5));
+  heatmapX = localX - canvasPoint.x*heatmapScale;
+  heatmapY = localY - canvasPoint.y*heatmapScale;
+  applyHeatmapTransform();
+}
+
+function enterHeatmap(){
+  document.getElementById('heatmapWrap').style.display = 'block';
+  document.getElementById('binderSwiperWrap').style.display = 'none';
+  document.getElementById('binderSkipGroup').style.display = 'none';
+  document.getElementById('binderMapToggle').classList.add('active');
+  document.getElementById('binderMapToggle').textContent = '📄 Page view';
+  renderHeatmap(true);
+}
+function exitHeatmap(){
+  document.getElementById('heatmapWrap').style.display = 'none';
+  document.getElementById('binderSwiperWrap').style.display = 'flex';
+  document.getElementById('binderSkipGroup').style.display = 'flex';
+  document.getElementById('binderMapToggle').classList.remove('active');
+  document.getElementById('binderMapToggle').textContent = '🗺️ Map view';
+}
+document.getElementById('binderMapToggle').addEventListener('click', ()=>{
+  const isOpen = document.getElementById('heatmapWrap').style.display !== 'none';
+  if(isOpen) exitHeatmap(); else enterHeatmap();
+});
+document.getElementById('heatmapZoomIn').addEventListener('click', ()=> zoomHeatmapAt(null, null, 1.3));
+document.getElementById('heatmapZoomOut').addEventListener('click', ()=> zoomHeatmapAt(null, null, 1/1.3));
+document.getElementById('heatmapFitBtn').addEventListener('click', ()=> fitHeatmap());
+
+// Pan (mouse drag + single-finger touch) and pinch-zoom (two-finger touch)
+(function(){
+  const viewport = document.getElementById('heatmapViewport');
+  let panState = null;
+  let pinchState = null;
+
+  const dist = (t1,t2)=> Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY);
+  const mid = (t1,t2)=> ({ x:(t1.clientX+t2.clientX)/2, y:(t1.clientY+t2.clientY)/2 });
+
+  viewport.addEventListener('touchstart', e=>{
+    if(e.touches.length === 1){
+      const t = e.touches[0];
+      panState = { startX:t.clientX, startY:t.clientY, origX:heatmapX, origY:heatmapY };
+      pinchState = null;
+    } else if(e.touches.length === 2){
+      panState = null;
+      const [t1,t2] = e.touches;
+      const m = mid(t1,t2);
+      const rect = viewport.getBoundingClientRect();
+      pinchState = {
+        initialDist: dist(t1,t2),
+        initialScale: heatmapScale,
+        canvasPoint: { x:(m.x-rect.left-heatmapX)/heatmapScale, y:(m.y-rect.top-heatmapY)/heatmapScale }
+      };
+    }
+  }, { passive:true });
+
+  viewport.addEventListener('touchmove', e=>{
+    if(e.touches.length === 1 && panState){
+      const t = e.touches[0];
+      heatmapX = panState.origX + (t.clientX-panState.startX);
+      heatmapY = panState.origY + (t.clientY-panState.startY);
+      applyHeatmapTransform();
+    } else if(e.touches.length === 2 && pinchState){
+      const [t1,t2] = e.touches;
+      const d = dist(t1,t2);
+      const m = mid(t1,t2);
+      const rect = viewport.getBoundingClientRect();
+      heatmapScale = Math.max(0.15, Math.min(pinchState.initialScale * (d/pinchState.initialDist), 5));
+      heatmapX = (m.x-rect.left) - pinchState.canvasPoint.x*heatmapScale;
+      heatmapY = (m.y-rect.top) - pinchState.canvasPoint.y*heatmapScale;
+      applyHeatmapTransform();
+    }
+    e.preventDefault();
+  }, { passive:false });
+
+  viewport.addEventListener('touchend', e=>{
+    if(e.touches.length === 0){ panState = null; pinchState = null; }
+    else if(e.touches.length === 1){
+      const t = e.touches[0];
+      panState = { startX:t.clientX, startY:t.clientY, origX:heatmapX, origY:heatmapY };
+      pinchState = null;
+    }
+  });
+
+  let mouseDrag = null;
+  viewport.addEventListener('mousedown', e=>{
+    mouseDrag = { startX:e.clientX, startY:e.clientY, origX:heatmapX, origY:heatmapY };
+  });
+  window.addEventListener('mousemove', e=>{
+    if(!mouseDrag) return;
+    heatmapX = mouseDrag.origX + (e.clientX-mouseDrag.startX);
+    heatmapY = mouseDrag.origY + (e.clientY-mouseDrag.startY);
+    applyHeatmapTransform();
+  });
+  window.addEventListener('mouseup', ()=>{ mouseDrag = null; });
+
+  viewport.addEventListener('wheel', e=>{
+    e.preventDefault();
+    zoomHeatmapAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 1/1.12);
+  }, { passive:false });
 })();
 
 document.getElementById('binderFiltersToggle').addEventListener('click', ()=>{
