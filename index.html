@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 3.3.0
+  VERSION: 3.5.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -102,6 +102,17 @@
            already-caught Pokémon on the Species Index now replays its
            celebration instead of asking to remove it — un-marking a
            mistaken catch still works from the info pop-out.
+  v3.4.0 — Fix: v3.3.0's "tap caught to replay" change made un-marking
+           too hard to find. Added a small ✕ button directly on caught
+           cards (bottom-right corner) for a quick, explicit way to
+           un-mark a mistaken catch — no need to go through the info
+           pop-out. Tapping the card itself still replays the celebration.
+  v3.5.0 — New Catching Mode / Discovery Mode toggle at the top of the
+           app (applies globally, remembers your choice). Catching Mode
+           is the existing behaviour — tap to catch, ✕ to un-mark.
+           Discovery Mode is browse-only: tapping any Pokémon (grid or
+           info pop-out) just opens details — nothing gets caught or
+           removed, safe to hand the phone over for browsing.
 
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
@@ -205,6 +216,13 @@
     line-height:20px;text-align:center;padding:0;opacity:.6;transition:opacity .12s, background .12s;
   }
   .mon .info-btn:hover{opacity:1;background:var(--ink);color:var(--panel);}
+  .mon .uncatch-btn{
+    position:absolute;bottom:6px;right:6px;width:20px;height:20px;border-radius:50%;
+    background:rgba(163,57,44,0.14);color:var(--stamp);border:none;cursor:pointer;
+    font-size:.62rem;line-height:20px;text-align:center;padding:0;opacity:.6;
+    transition:opacity .12s, background .12s;z-index:3;
+  }
+  .mon .uncatch-btn:hover{opacity:1;background:var(--stamp);color:#fff;}
 
   .modal-overlay{
     position:fixed;inset:0;background:rgba(20,24,16,.55);display:flex;align-items:center;
@@ -302,6 +320,8 @@
   }
   .sprite-tap-wrap:hover{background:rgba(163,57,44,0.08);}
   .sprite-tap-wrap:active{background:rgba(163,57,44,0.15);}
+  .sprite-tap-wrap.no-tap{cursor:default;}
+  .sprite-tap-wrap.no-tap:hover, .sprite-tap-wrap.no-tap:active{background:transparent;}
   .sprite-tap-wrap img.modal-sprite{margin:0;pointer-events:none;}
   .sprite-tap-wrap .modal-stamp{
     position:absolute;top:6px;right:-10px;background:transparent;color:var(--stamp);
@@ -337,6 +357,18 @@
 
   .loading{text-align:center;padding:60px 20px;font-family:'JetBrains Mono',monospace;color:var(--ink-soft);}
 
+  .mode-bar{display:flex;gap:4px;margin-bottom:6px;}
+  .mode-btn{
+    font-family:'Fraunces',serif;font-weight:700;font-size:.88rem;flex:1;
+    padding:10px 14px;border:2px solid var(--ink);border-radius:6px;
+    background:transparent;color:var(--ink-soft);cursor:pointer;transition:.12s;
+  }
+  .mode-btn.active{background:var(--ink);color:var(--panel);}
+  .mode-btn:not(.active):hover{border-color:var(--stamp);color:var(--ink);}
+  .mode-hint{
+    font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--ink-soft);
+    text-align:center;margin-bottom:16px;
+  }
   .view-tabs{display:flex;gap:4px;margin-bottom:18px;}
   .view-tab{
     font-family:'Fraunces',serif;font-weight:700;font-size:.95rem;
@@ -409,7 +441,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v3.3.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v3.5.0</span></h1>
   </header>
 
   <div class="panel">
@@ -422,6 +454,12 @@
     </div>
     <div id="progressWrap"></div>
   </div>
+
+  <div class="mode-bar" id="modeBar">
+    <button class="mode-btn active" data-mode="catch">🎯 Catching Mode</button>
+    <button class="mode-btn" data-mode="discover">🔍 Discovery Mode</button>
+  </div>
+  <div class="mode-hint" id="modeHint">Tap a Pokémon to catch it (or catch/un-mark it).</div>
 
   <div class="view-tabs" id="viewTabs">
     <button class="view-tab active" data-view="index">Species Index</button>
@@ -580,10 +618,11 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '3.3.0';
+const APP_VERSION = '3.5.0';
 const STORAGE_KEY = 'pokedex-index-v1';
 const CAUGHT_KEY = 'pokedex-caught-v1';
 const AUTOBACKUP_KEY = 'pokedex-autobackup-v1';
+const MODE_KEY = 'pokedex-mode-v1';
 
 let autoBackupEnabled = false;
 let dirtySinceExport = false;
@@ -639,6 +678,25 @@ let rangeMode = '100';
 let activeRange = null; // [start,end] inclusive, or null for all
 let caughtFilter = 'all'; // all | yes | no
 let caughtIds = new Set();
+let appMode = 'catch'; // catch | discover
+
+async function loadAppMode(){
+  try{
+    const res = await window.storage.get(MODE_KEY, false);
+    if(res && res.value === 'discover') appMode = 'discover';
+  }catch(e){ /* default to catch mode */ }
+  applyModeUI();
+}
+async function saveAppMode(){
+  try{ await window.storage.set(MODE_KEY, appMode, false); }
+  catch(e){ console.error('could not save mode', e); }
+}
+function applyModeUI(){
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode === appMode));
+  document.getElementById('modeHint').textContent = appMode === 'catch'
+    ? 'Tap a Pokémon to catch it (or use ✕ to un-mark).'
+    : "Discovery mode — browse and view details, nothing gets caught or removed.";
+}
 
 async function loadCaught(){
   try{
@@ -919,6 +977,7 @@ function render(){
     return `
     <div class="mon${caughtIds.has(m.id) ? ' caught' : ''}${stars===5 ? ' rare' : ''}" data-id="${m.id}">
       ${caughtIds.has(m.id) ? '<div class="stamp">Caught</div>' : ''}
+      ${caughtIds.has(m.id) && appMode==='catch' ? `<button class="uncatch-btn" data-uncatch-id="${m.id}" aria-label="Remove from caught">✕</button>` : ''}
       <button class="info-btn" data-info-id="${m.id}" aria-label="More info">i</button>
       <div class="sprite-wrap">
         <img class="sprite" loading="lazy" alt="${m.name}"
@@ -938,9 +997,15 @@ function render(){
   content.querySelectorAll('.mon').forEach(el=>{
     el.addEventListener('click', ()=>{
       const id = parseInt(el.dataset.id, 10);
+      if(appMode === 'discover'){
+        // Discovery mode — just looking. Tapping opens details, nothing
+        // gets caught or removed.
+        openInfoModal(id);
+        return;
+      }
       if(caughtIds.has(id)){
         // Already caught — replay the celebration instead of prompting to
-        // remove. Un-marking a mistaken catch is still available from the
+        // remove. Un-marking a mistaken catch uses the ✕ button, or the
         // info pop-out (tap the "i" button, then the artwork).
         celebrate(id, starRating(id));
         return;
@@ -957,6 +1022,17 @@ function render(){
     btn.addEventListener('click', e=>{
       e.stopPropagation();
       openInfoModal(parseInt(btn.dataset.infoId, 10));
+    });
+  });
+  content.querySelectorAll('.uncatch-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.stopPropagation();
+      const id = parseInt(btn.dataset.uncatchId, 10);
+      const mon = allMons.find(m=>m.id===id);
+      const displayName = mon ? mon.name : `#${id}`;
+      if(window.confirm(`Remove ${displayName} from your caught list?`)){
+        toggleCaught(id);
+      }
     });
   });
 }
@@ -982,12 +1058,12 @@ async function openInfoModal(id){
     const abilities = detail.abilities.map(a=>titleCase(a.ability.name)).join(', ');
     box.innerHTML = `
       <button class="modal-close" id="modalCloseBtn">&times;</button>
-      <div class="sprite-tap-wrap" id="spriteTapWrap">
+      <div class="sprite-tap-wrap${appMode==='discover' ? ' no-tap' : ''}" id="spriteTapWrap">
         <img class="modal-sprite" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png"
           onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png';">
         ${caughtIds.has(id) ? '<div class="modal-stamp">Caught</div>' : ''}
       </div>
-      <div class="tap-hint">${caughtIds.has(id) ? 'Tap the artwork to un-mark' : 'Tap the artwork to confirm caught'}</div>
+      <div class="tap-hint">${appMode==='discover' ? "Discovery mode — just browsing" : (caughtIds.has(id) ? 'Tap the artwork to un-mark' : 'Tap the artwork to confirm caught')}</div>
       <div class="modal-num">#${String(id).padStart(4,'0')}</div>
       <div class="modal-name">${mon ? mon.name : titleCase(detail.name)}</div>
       <div class="modal-types">
@@ -1002,17 +1078,19 @@ async function openInfoModal(id){
       </div>
     `;
     document.getElementById('modalCloseBtn').addEventListener('click', closeInfoModal);
-    document.getElementById('spriteTapWrap').addEventListener('click', ()=>{
-      const displayName = mon ? mon.name : titleCase(detail.name);
-      const question = caughtIds.has(id)
-        ? `Remove ${displayName} from your caught list?`
-        : `Mark ${displayName} as caught?`;
-      if(window.confirm(question)){
-        const added = toggleCaught(id);
-        openInfoModal(id);
-        if(added) maybeCelebrate(id);
-      }
-    });
+    if(appMode !== 'discover'){
+      document.getElementById('spriteTapWrap').addEventListener('click', ()=>{
+        const displayName = mon ? mon.name : titleCase(detail.name);
+        const question = caughtIds.has(id)
+          ? `Remove ${displayName} from your caught list?`
+          : `Mark ${displayName} as caught?`;
+        if(window.confirm(question)){
+          const added = toggleCaught(id);
+          openInfoModal(id);
+          if(added) maybeCelebrate(id);
+        }
+      });
+    }
   }catch(err){
     box.innerHTML = `<button class="modal-close" id="modalCloseBtn">&times;</button><div class="modal-loading">Couldn't load details right now.</div>`;
     document.getElementById('modalCloseBtn').addEventListener('click', closeInfoModal);
@@ -1402,6 +1480,15 @@ document.getElementById('viewTabs').addEventListener('click', e=>{
   if(view === 'binder') renderBinderView();
 });
 
+document.getElementById('modeBar').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-mode]');
+  if(!btn) return;
+  appMode = btn.dataset.mode;
+  saveAppMode();
+  applyModeUI();
+  render();
+});
+
 function init(){
   buildTypeChips();
   buildRarityChips();
@@ -1410,6 +1497,7 @@ function init(){
   buildBinderRarityChips();
   buildBinderRangeButtons();
   loadAutoBackupPref();
+  loadAppMode();
   renderProgress();
   render();
 }
