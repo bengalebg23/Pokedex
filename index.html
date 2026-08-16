@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 4.3.0
+  VERSION: 5.0.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -181,6 +181,21 @@
               It's still global — unlocking it also unlocks catching in
               Binder Guide and Map view — it just lives in the Species
               Index tab now rather than the top of the whole app.
+  v5.0.0 — Multi-device sync via Firebase Realtime Database. Catches now
+           write to a shared `pokedex/caught` path (one entry per dex ID)
+           instead of only localStorage, so catching on phone or tablet
+           shows up on the other within moments. First connect on a device
+           does a union merge (keeps whatever's caught locally AND
+           remotely, doesn't let an empty/behind device wipe the other)
+           and pushes the difference up; every catch/uncatch after that
+           writes just that one ID, so two devices toggling different
+           Pokémon while both online never stomp on each other. localStorage
+           stays as the offline-first cache — boot always reads it
+           immediately, Firebase reconciles in the background once
+           connected. New Settings → Sync panel shows connection status.
+           The main script is now `type="module"` (needed for the Firebase
+           SDK's ES module imports) — functionally unchanged, but worth
+           knowing if adding more script tags later.
 
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
@@ -214,7 +229,7 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v4.3.0
+**Current version:** v5.0.0
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
 **Main file:** `index.html` (single-file app, ~1,600 lines — HTML/CSS/JS all in one, including this handoff)
@@ -268,7 +283,8 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 
 ## Stack
 
-- Single HTML file, vanilla JS, no build step, no framework.
+- Single HTML file, `type="module"` script (needed for Firebase's ES
+  module imports), no build step, no framework.
 - Fonts: Fraunces (display/serif), Inter (body), JetBrains Mono (data/numbers) via Google Fonts.
 - Aesthetic: kraft-paper/field-journal theme — ink-stamp "Caught" motif,
   warm paper background, forest-green ink, red-brown stamp accent, gold
@@ -281,10 +297,38 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   when running inside a Claude preview, and falls back to `localStorage`
   automatically when hosted standalone (which is what makes it work on
   GitHub Pages). Same file works in both places, no code changes needed.
+  Acts as the offline-first local cache; Firebase (below) is the
+  cross-device sync layer on top of it.
+
+### Firebase sync (multi-device catches)
+- Firebase project: `pokemonapp-19788`, Realtime Database in `europe-west1`.
+- SDK loaded straight from the Google CDN as ES module imports
+  (`firebase-app.js` + `firebase-database.js`, pinned to v10.12.2 — no
+  floating majors, per the Meal Planner lesson) — no npm/bundler.
+- Single shared path: `pokedex/caught/<dexId>: true` for every caught
+  species. Per-ID writes (not a whole-array overwrite) so two devices
+  catching different Pokémon at the same time never clobber each other.
+- Security rules scope read/write to the `pokedex` path only (not the
+  whole database):
+  ```json
+  { "rules": { "pokedex": { ".read": true, ".write": true } } }
+  ```
+  These are open (no auth) — fine for a hobby app's catch data, but worth
+  remembering: the `apiKey` in the page source isn't secret, but anyone
+  who finds the URL can read/write that path. Same trade-off as Meal
+  Planner. Add Firebase Auth later if that ever needs tightening.
+- On boot: reads localStorage immediately (works offline, no wait on
+  network), then `firebaseInitialSync()` runs in the background — a
+  one-time GET that unions local + remote caught IDs (so an existing
+  device's progress is never wiped by an empty/behind remote, and vice
+  versa), pushes up whatever the union added, then subscribes to live
+  updates via `onValue` for everything after.
+- Settings → Sync panel shows live connection status via Firebase's
+  `.info/connected` path.
 
 ### Storage keys
 - `pokedex-index-v1` — cached species list (name/types/id), fetched once from PokeAPI.
-- `pokedex-caught-v1` — array of caught dex IDs.
+- `pokedex-caught-v1` — local cache of caught dex IDs (mirrors Firebase; source of truth once Firebase connects).
 - `pokedex-autobackup-v1` — auto-backup toggle preference.
 - `pokedex-lock-v1` — catching lock state ('locked' | 'unlocked'). Replaces
   the old `pokedex-mode-v1` ("Catching Mode"/"Discovery Mode"), which is
@@ -384,6 +428,9 @@ yet under the new key, it's migrated once to "unlocked" automatically.
     the app header down into the Species Index view, directly above the
     "N shown" line. Still a global toggle — grey when locked, full colour
     when unlocked.
+33. **Firebase multi-device sync** — catches sync across every install via
+    a shared Realtime Database path, per-ID writes, union-merge on first
+    connect, live `onValue` updates after. Settings → Sync shows status.
 
 ## Known issues / lessons learned this build
 
@@ -436,6 +483,18 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   splash appears, that's the manifest icon — swap `icon-192.png` and
   `icon-512.png` in the repo to change it, but it'll always be one fixed
   image, not a random pick.
+- **Firebase security rules are open (no auth)** — anyone who finds the
+  live URL can read/write the `pokedex/caught` path, since the config's
+  `apiKey` is visible in page source (normal for Firebase web apps, not a
+  secret). Accepted trade-off for a hobby app, same as Meal Planner. Add
+  Firebase Auth if that ever needs locking down.
+- **Converting the script to `type="module"`** (needed for Firebase's ES
+  module imports) changes module scripts to always run in strict mode and
+  execute after full document parse — both were already true in effect for
+  this file (script sits at the very end of `<body>`, no inline `onclick=`
+  handlers anywhere), so no behaviour changed, but worth knowing if adding
+  new inline event-handler attributes later — they won't be able to call
+  functions defined in this module unless explicitly attached to `window`.
 
 ## Version-bump checklist (do this every update)
 
@@ -859,7 +918,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 </div>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v4.3.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v5.0.0</span></h1>
   </header>
 
   <div class="panel">
@@ -1003,6 +1062,17 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 
   <div id="settingsView" style="display:none;">
     <div class="panel">
+      <h2>Sync</h2>
+      <p style="margin:0 0 10px;font-size:.85rem;color:var(--ink-soft);">
+        Catches sync automatically between every device this is installed
+        on, via a shared Firebase database — catch something on your phone
+        and it shows up on your tablet (and vice versa) within moments,
+        as long as both have a signal.
+      </p>
+      <div class="status-line" id="syncStatus">Connecting…</div>
+    </div>
+
+    <div class="panel">
       <h2>Data file</h2>
       <p style="margin:0 0 12px;font-size:.85rem;color:var(--ink-soft);">
         Your progress lives in this app, but it's worth keeping a copy of your own.
@@ -1042,7 +1112,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   <div class="modal-box" id="modalBox"></div>
 </div>
 
-<script>
+<script type="module">
 // Storage shim: window.storage only exists inside Claude's artifact preview.
 // When this file is opened as a plain hosted page (e.g. from a home screen
 // bookmark), fall back to localStorage with the same get/set/delete/list
@@ -1077,7 +1147,117 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '4.3.0';
+const APP_VERSION = '5.0.0';
+// --- Firebase sync (multi-device catch sync) ---
+// Realtime Database, one shared path (pokedex/caught) holding
+// { "<dexId>": true, ... } for every caught species. Each catch/uncatch
+// writes just that one child (set true / remove), not the whole array —
+// so two devices toggling different Pokémon while both online never stomp
+// on each other. Only a genuine same-ID toggle on both devices in the same
+// moment is last-write-wins, same as Meal Planner's Firebase sync.
+// window.storage (localStorage) stays as the offline-first cache: boot
+// always reads it immediately so the app works with no signal, and
+// Firebase reconciles in the background once it connects.
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, get, set, remove, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCKnHzNiYCvq7vcauqX91ijcwghBiWPpiE",
+  authDomain: "pokemonapp-19788.firebaseapp.com",
+  databaseURL: "https://pokemonapp-19788-default-rtdb.europe-west1.firebasedatabase.app/",
+  projectId: "pokemonapp-19788",
+  storageBucket: "pokemonapp-19788.firebasestorage.app",
+  messagingSenderId: "864434473500",
+  appId: "1:864434473500:web:92e4abb6c7215c22686dd9"
+};
+
+let fbDb = null;
+try{
+  const fbApp = initializeApp(firebaseConfig);
+  fbDb = getDatabase(fbApp);
+}catch(e){
+  console.error('Firebase init failed — running local-only, no cross-device sync', e);
+}
+const FB_CAUGHT_PATH = 'pokedex/caught';
+
+function setSyncStatus(text, isErr){
+  const el = document.getElementById('syncStatus');
+  if(!el) return;
+  el.textContent = text;
+  el.className = 'status-line' + (isErr ? ' err' : '');
+}
+
+// Fire-and-forget — never blocks the tap that triggered it. Errors surface
+// as a status line in Settings, not an alert, so a dropped connection
+// doesn't interrupt catching.
+function pushCaughtIdToFirebase(id, isCaught){
+  if(!fbDb) return;
+  const p = ref(fbDb, `${FB_CAUGHT_PATH}/${id}`);
+  (isCaught ? set(p, true) : remove(p)).catch(e=>{
+    console.error('Firebase write failed for #'+id, e);
+    setSyncStatus("Sync error — this catch may not have reached your other device yet.", true);
+  });
+}
+function pushFullCaughtToFirebase(){
+  if(!fbDb) return;
+  const obj = {};
+  caughtIds.forEach(id=>{ obj[id] = true; });
+  set(ref(fbDb, FB_CAUGHT_PATH), obj).catch(e=>{
+    console.error('Firebase bulk write failed', e);
+    setSyncStatus("Sync error — imported data may not have reached your other device yet.", true);
+  });
+}
+
+// Runs once on boot. First does a one-time GET and unions whatever's
+// already caught locally with whatever's already caught remotely (so the
+// very first sync on an existing device never wipes out prior progress in
+// either direction), pushes up anything the union added that Firebase
+// didn't have yet, then subscribes to live updates for everything after.
+async function firebaseInitialSync(){
+  if(!fbDb){ setSyncStatus('Not connected — using local copy only.', true); return; }
+  setSyncStatus('Connecting…');
+  try{
+    const snap = await get(ref(fbDb, FB_CAUGHT_PATH));
+    const remoteObj = snap.exists() ? snap.val() : {};
+    const remoteIds = new Set(Object.keys(remoteObj).map(Number));
+    const merged = new Set([...caughtIds, ...remoteIds]);
+    const toPush = {};
+    merged.forEach(id=>{ if(!remoteIds.has(id)) toPush[id] = true; });
+    caughtIds = merged;
+    await saveCaughtLocal();
+    if(Object.keys(toPush).length){
+      await update(ref(fbDb, FB_CAUGHT_PATH), toPush);
+    }
+    render();
+    renderProgress();
+    const binderView = document.getElementById('binderView');
+    if(binderView && binderView.style.display !== 'none') renderBinderView();
+  }catch(e){
+    console.error('Firebase initial sync failed — staying on local data only', e);
+    setSyncStatus("Couldn't reach the sync server — using local copy only.", true);
+    return;
+  }
+  onValue(ref(fbDb, FB_CAUGHT_PATH), snap=>{
+    const remoteObj = snap.exists() ? snap.val() : {};
+    caughtIds = new Set(Object.keys(remoteObj).map(Number));
+    saveCaughtLocal();
+    render();
+    renderProgress();
+    const binderView = document.getElementById('binderView');
+    if(binderView && binderView.style.display !== 'none') renderBinderView();
+    const heatmapWrap = document.getElementById('heatmapWrap');
+    if(heatmapWrap && heatmapWrap.style.display !== 'none') renderHeatmap(false);
+  }, err=>{
+    console.error('Firebase listener error', err);
+    setSyncStatus('Sync connection dropped — using local copy until it reconnects.', true);
+  });
+  onValue(ref(fbDb, '.info/connected'), snap=>{
+    setSyncStatus(snap.val() === true
+      ? 'Connected — synced across your devices.'
+      : 'Offline — using local copy, will sync when back online.', snap.val() !== true);
+  });
+}
+
 const STORAGE_KEY = 'pokedex-index-v1';
 const CAUGHT_KEY = 'pokedex-caught-v1';
 const AUTOBACKUP_KEY = 'pokedex-autobackup-v1';
@@ -1259,7 +1439,7 @@ async function loadCaught(){
     if(res && res.value) caughtIds = new Set(JSON.parse(res.value));
   }catch(e){ /* nothing caught yet */ }
 }
-async function saveCaught(){
+async function saveCaughtLocal(){
   try{ await window.storage.set(CAUGHT_KEY, JSON.stringify([...caughtIds]), false); }
   catch(e){ console.error('could not save caught state', e); }
 }
@@ -1278,7 +1458,8 @@ function toggleCaught(id){
   let added;
   if(caughtIds.has(id)){ caughtIds.delete(id); added = false; }
   else { caughtIds.add(id); added = true; }
-  saveCaught();
+  saveCaughtLocal();
+  pushCaughtIdToFirebase(id, added);
   dirtySinceExport = true;
   scheduleAutoBackup();
   render();
@@ -1377,6 +1558,7 @@ function titleCase(name){
 
 async function loadIndex(){
   await loadCaught();
+  firebaseInitialSync(); // not awaited — boots from local cache immediately, reconciles once connected
   await loadSplashSourcePref();
   showBootSplash();
   try{
@@ -1762,7 +1944,8 @@ function importDataFile(file){
       const parsed = JSON.parse(e.target.result);
       if(!Array.isArray(parsed.caughtIds)) throw new Error('missing caughtIds');
       caughtIds = new Set(parsed.caughtIds);
-      await saveCaught();
+      await saveCaughtLocal();
+      pushFullCaughtToFirebase();
       if(Array.isArray(parsed.mons) && parsed.mons.length > 0){
         allMons = parsed.mons;
         try{ await window.storage.set(STORAGE_KEY, JSON.stringify(allMons), false); }catch(err){}
