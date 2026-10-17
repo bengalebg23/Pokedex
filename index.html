@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 5.0.0
+  VERSION: 6.0.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -197,6 +197,18 @@
            SDK's ES module imports) — functionally unchanged, but worth
            knowing if adding more script tags later.
 
+  v6.0.0 — Accounts and a Friends tab. Sign in with email + password
+           (Firebase Authentication, open sign-up); each person's catches
+           now live at users/<uid>/caught instead of one shared list, so
+           friends can each track their own collection. New login / create-
+           account screen (stays signed in), Settings → Account with sign
+           out, and a 👥 Friends tab showing everyone's progress ranked by
+           caught count, with how many each of you is missing from the other.
+           The local cache is tied to whoever signed in, so a different
+           person on the same device never inherits someone else's catches.
+           Requires new database rules and Email/Password enabled in the
+           Firebase console — see the Firebase section of the handoff.
+
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
   "Data file" panel). Re-import that file after updating to a new version
@@ -229,7 +241,7 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v5.0.0
+**Current version:** v6.0.0
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
 **Main file:** `index.html` (single-file app, ~1,600 lines — HTML/CSS/JS all in one, including this handoff)
@@ -300,35 +312,56 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   Acts as the offline-first local cache; Firebase (below) is the
   cross-device sync layer on top of it.
 
-### Firebase sync (multi-device catches)
+### Firebase sync + accounts (multi-device, multi-profile)
 - Firebase project: `pokemonapp-19788`, Realtime Database in `europe-west1`.
 - SDK loaded straight from the Google CDN as ES module imports
-  (`firebase-app.js` + `firebase-database.js`, pinned to v10.12.2 — no
-  floating majors, per the Meal Planner lesson) — no npm/bundler.
-- Single shared path: `pokedex/caught/<dexId>: true` for every caught
-  species. Per-ID writes (not a whole-array overwrite) so two devices
-  catching different Pokémon at the same time never clobber each other.
-- Security rules scope read/write to the `pokedex` path only (not the
-  whole database):
+  (`firebase-app.js`, `firebase-database.js`, `firebase-auth.js`, pinned to
+  v10.12.2 — no floating majors, per the Meal Planner lesson) — no npm/bundler.
+- **Auth:** Firebase Authentication, Email/Password provider, open sign-up
+  (anyone with the link can create an account). Sign-in persists across
+  restarts, so the login screen only appears on first use / after sign-out.
+- **Data model:** `users/<uid>/profile` = `{ name, createdAt }` (display
+  name only — emails stay private inside Firebase Auth, visible only to
+  Ben in the console) and `users/<uid>/caught/<dexId>: true`, one child per
+  caught species. Per-ID writes so two devices on one account never clobber
+  each other.
+- **Security rules** (paste in Realtime Database → Rules):
   ```json
-  { "rules": { "pokedex": { ".read": true, ".write": true } } }
+  {
+    "rules": {
+      "users": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    }
+  }
   ```
-  These are open (no auth) — fine for a hobby app's catch data, but worth
-  remembering: the `apiKey` in the page source isn't secret, but anyone
-  who finds the URL can read/write that path. Same trade-off as Meal
-  Planner. Add Firebase Auth later if that ever needs tightening.
-- On boot: reads localStorage immediately (works offline, no wait on
-  network), then `firebaseInitialSync()` runs in the background — a
-  one-time GET that unions local + remote caught IDs (so an existing
-  device's progress is never wiped by an empty/behind remote, and vice
-  versa), pushes up whatever the union added, then subscribes to live
-  updates via `onValue` for everything after.
-- Settings → Sync panel shows live connection status via Firebase's
-  `.info/connected` path.
+  Any signed-in user can READ everyone's `users` data (powers the Friends
+  tab); each person can only WRITE their own uid. The old open `pokedex`
+  path from v5.0.0 is no longer used — remove it from the rules once every
+  device is on v6.
+- **Local cache ownership:** `pokedex-caught-owner-v1` records which uid
+  the local `pokedex-caught-v1` cache belongs to. A different person
+  signing in on the same device drops the cache instead of merging it into
+  their account; pre-login data (no owner recorded, i.e. from v5 or
+  earlier) is adopted by the first person to sign in. Sign-out wipes the
+  cache and owner.
+- On sign-in (including auto sign-in at boot): `startUserSync()` does a
+  one-time GET and unions local + remote caught IDs (so an existing
+  device's progress is never wiped by an empty/behind remote), pushes up
+  the difference, then subscribes via `onValue` to the user's own caught
+  list and to the whole `users` tree (Friends tab).
+- **Friends tab:** live leaderboard of every account ranked by caught
+  count, with "they have N you're missing / you have M they're missing".
+- Settings → Account (name, email, sign out) and Settings → Sync (status
+  via Firebase's `.info/connected`).
 
 ### Storage keys
 - `pokedex-index-v1` — cached species list (name/types/id), fetched once from PokeAPI.
-- `pokedex-caught-v1` — local cache of caught dex IDs (mirrors Firebase; source of truth once Firebase connects).
+- `pokedex-caught-v1` — local cache of caught dex IDs (mirrors the signed-in user's Firebase list).
+- `pokedex-caught-owner-v1` — uid the local caught cache belongs to (see ownership note above).
 - `pokedex-autobackup-v1` — auto-backup toggle preference.
 - `pokedex-lock-v1` — catching lock state ('locked' | 'unlocked'). Replaces
   the old `pokedex-mode-v1` ("Catching Mode"/"Discovery Mode"), which is
@@ -431,6 +464,10 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 33. **Firebase multi-device sync** — catches sync across every install via
     a shared Realtime Database path, per-ID writes, union-merge on first
     connect, live `onValue` updates after. Settings → Sync shows status.
+34. **Accounts + Friends tab (v6.0.0)** — email/password login via Firebase
+    Auth, per-account catch lists at `users/<uid>/caught`, display-name
+    profiles, login/sign-up overlay, Settings → Account (sign out), and a
+    👥 Friends leaderboard comparing everyone's progress.
 
 ## Known issues / lessons learned this build
 
@@ -483,11 +520,16 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   splash appears, that's the manifest icon — swap `icon-192.png` and
   `icon-512.png` in the repo to change it, but it'll always be one fixed
   image, not a random pick.
-- **Firebase security rules are open (no auth)** — anyone who finds the
-  live URL can read/write the `pokedex/caught` path, since the config's
-  `apiKey` is visible in page source (normal for Firebase web apps, not a
-  secret). Accepted trade-off for a hobby app, same as Meal Planner. Add
-  Firebase Auth if that ever needs locking down.
+- **Open sign-up + everyone-can-read is deliberate** (small group of close
+  friends, and Ben wants to see everyone's progress). Consequence: any
+  signed-in user can read every other user's display name and catches via
+  the SDK, and anyone with the link can create an account. Tighten later by
+  switching to invite-only (disable sign-up, create accounts in the console)
+  or by restricting `.read` to specific uids. Email addresses are not stored
+  in the database.
+- **Rollout order matters:** the new rules lock the old open `pokedex` path,
+  which v5.0.0 still writes to. Keep the old rules until every device is on
+  v6 and signed in, then swap to the new rules.
 - **Converting the script to `type="module"`** (needed for Firebase's ES
   module imports) changes module scripts to always run in strict mode and
   execute after full document parse — both were already true in effect for
@@ -533,6 +575,38 @@ yet under the new key, it's migrated once to "unlocked" automatically.
     margin:0; background:var(--paper); color:var(--ink); font-family:'Inter',sans-serif;
     min-height:100vh; padding-bottom:60px;
   }
+  .auth-overlay{
+    position:fixed;inset:0;z-index:998;background:var(--paper);
+    display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;
+  }
+  .auth-card{
+    width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:22px 20px;display:flex;flex-direction:column;gap:10px;
+    box-shadow:0 8px 28px rgba(0,0,0,.12);
+  }
+  .auth-brand{font-family:'Fraunces',serif;font-weight:900;font-size:1.25rem;color:var(--ink);}
+  .auth-card h2{margin:0 0 4px;font-size:.95rem;}
+  .auth-card .search{margin-bottom:0;}
+  .auth-submit{width:100%;}
+  .auth-links{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .auth-link{
+    background:none;border:none;padding:4px 0;cursor:pointer;color:var(--stamp);
+    font-family:'JetBrains Mono',monospace;font-size:.74rem;text-decoration:underline;
+  }
+  .account-name{font-family:'Fraunces',serif;font-weight:700;font-size:1.15rem;color:var(--ink);}
+  .friend-row{padding:10px 0;border-bottom:1px dashed var(--line);}
+  .friend-row:last-child{border-bottom:none;}
+  .friend-row.me .friend-name{color:var(--stamp);}
+  .friend-top{display:flex;align-items:baseline;gap:10px;}
+  .friend-rank{
+    font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--ink-soft);min-width:1.4em;
+  }
+  .friend-name{font-family:'Fraunces',serif;font-weight:700;font-size:1.02rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+  .friend-name i{font-weight:400;font-size:.78rem;color:var(--ink-soft);}
+  .friend-count{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--ink-soft);white-space:nowrap;}
+  .friend-bar{height:8px;border-radius:4px;background:rgba(0,0,0,.12);margin-top:7px;overflow:hidden;}
+  .friend-bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#c9862b,#4a7a3d);}
+  .friend-compare{font-size:.78rem;color:var(--ink-soft);margin-top:6px;}
   .boot-splash{
     position:fixed;inset:0;z-index:999;
     background:var(--paper);
@@ -910,6 +984,23 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 </style>
 </head>
 <body>
+<div class="auth-overlay" id="authOverlay" style="display:none;">
+  <form class="auth-card" id="authForm" novalidate>
+    <div class="auth-brand">The Full Index</div>
+    <h2 id="authTitle">Sign in</h2>
+    <div id="authNameRow" style="display:none;">
+      <input class="search" id="authName" type="text" placeholder="Display name (shown to friends)" maxlength="20" autocomplete="nickname">
+    </div>
+    <input class="search" id="authEmail" type="email" placeholder="Email" autocomplete="email" inputmode="email">
+    <input class="search" id="authPassword" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
+    <button class="btn-data auth-submit" id="authSubmit" type="submit">Sign in</button>
+    <div class="status-line" id="authMsg"></div>
+    <div class="auth-links">
+      <button type="button" class="auth-link" id="authSwitch">New here? Create an account</button>
+      <button type="button" class="auth-link" id="authForgot">Forgot password?</button>
+    </div>
+  </form>
+</div>
 <div class="boot-splash" id="bootSplash">
   <div class="boot-splash-inner">
     <img id="bootSplashImg" alt="" src="">
@@ -918,7 +1009,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 </div>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v5.0.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v6.0.0</span></h1>
   </header>
 
   <div class="panel">
@@ -935,6 +1026,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   <div class="view-tabs" id="viewTabs">
     <button class="view-tab active" data-view="index">Species Index</button>
     <button class="view-tab" data-view="binder">Binder Guide</button>
+    <button class="view-tab" data-view="friends">👥 Friends</button>
     <button class="view-tab" data-view="settings">⚙️ Settings</button>
   </div>
 
@@ -1060,12 +1152,30 @@ yet under the new key, it's migrated once to "unlocked" automatically.
     </div>
   </div>
 
+  <div id="friendsView" style="display:none;">
+    <div class="panel">
+      <h2>Everyone's progress</h2>
+      <p style="margin:0 0 12px;font-size:.85rem;color:var(--ink-soft);">
+        Live standings for every trainer signed up to this app, ranked by
+        how many species they've caught.
+      </p>
+      <div id="friendsList"><div class="loading">Sign in to see everyone's progress.</div></div>
+    </div>
+  </div>
+
   <div id="settingsView" style="display:none;">
+    <div class="panel">
+      <h2>Account</h2>
+      <div class="account-name" id="accountName">Not signed in</div>
+      <div class="status-line" id="accountEmail"></div>
+      <div style="margin-top:12px;"><button class="btn-data" id="signOutBtn">Sign out</button></div>
+    </div>
+
     <div class="panel">
       <h2>Sync</h2>
       <p style="margin:0 0 10px;font-size:.85rem;color:var(--ink-soft);">
-        Catches sync automatically between every device this is installed
-        on, via a shared Firebase database — catch something on your phone
+        Catches sync automatically between every device signed in to your
+        account, via a Firebase database — catch something on your phone
         and it shows up on your tablet (and vice versa) within moments,
         as long as both have a signal.
       </p>
@@ -1147,19 +1257,23 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '5.0.0';
-// --- Firebase sync (multi-device catch sync) ---
-// Realtime Database, one shared path (pokedex/caught) holding
-// { "<dexId>": true, ... } for every caught species. Each catch/uncatch
-// writes just that one child (set true / remove), not the whole array —
-// so two devices toggling different Pokémon while both online never stomp
-// on each other. Only a genuine same-ID toggle on both devices in the same
-// moment is last-write-wins, same as Meal Planner's Firebase sync.
-// window.storage (localStorage) stays as the offline-first cache: boot
-// always reads it immediately so the app works with no signal, and
-// Firebase reconciles in the background once it connects.
+const APP_VERSION = '6.0.0';
+// --- Firebase Auth + per-user sync (multi-device, multi-profile) ---
+// Each person signs in with email + password (Firebase Authentication).
+// Data model in the Realtime Database:
+//   users/<uid>/profile  → { name, createdAt }       (display name only —
+//                           emails stay private inside Firebase Auth)
+//   users/<uid>/caught   → { "<dexId>": true, ... }  (one child per species)
+// Security rules (set in the Firebase console): any signed-in user can READ
+// the whole `users` tree (that's what powers the Friends tab), but each
+// person can only WRITE under their own uid.
+// Each catch/uncatch writes just that one child, so two devices on the same
+// account toggling different Pokémon never stomp on each other. window.storage
+// (localStorage) stays as the offline-first cache: boot reads it immediately,
+// Firebase reconciles in the background once signed in and connected.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, get, set, remove, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCKnHzNiYCvq7vcauqX91ijcwghBiWPpiE",
@@ -1171,14 +1285,26 @@ const firebaseConfig = {
   appId: "1:864434473500:web:92e4abb6c7215c22686dd9"
 };
 
-let fbDb = null;
+let fbDb = null, fbAuth = null;
 try{
   const fbApp = initializeApp(firebaseConfig);
   fbDb = getDatabase(fbApp);
+  fbAuth = getAuth(fbApp);
 }catch(e){
-  console.error('Firebase init failed — running local-only, no cross-device sync', e);
+  console.error('Firebase init failed — running local-only, no sync or login', e);
 }
-const FB_CAUGHT_PATH = 'pokedex/caught';
+
+const CAUGHT_OWNER_KEY = 'pokedex-caught-owner-v1';
+let currentUser = null;
+let stopCaughtListener = null, stopUsersListener = null;
+let connListenerStarted = false;
+let usersData = {};          // snapshot of the whole `users` tree (Friends tab)
+let signupName = null;       // display name typed at sign-up, used when the profile is first written
+
+function escHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function userRef(sub){ return ref(fbDb, `users/${currentUser.uid}/${sub}`); }
 
 function setSyncStatus(text, isErr){
   const el = document.getElementById('syncStatus');
@@ -1187,37 +1313,68 @@ function setSyncStatus(text, isErr){
   el.className = 'status-line' + (isErr ? ' err' : '');
 }
 
+function refreshAllViews(){
+  render();
+  renderProgress();
+  const binderView = document.getElementById('binderView');
+  if(binderView && binderView.style.display !== 'none') renderBinderView();
+  const heatmapWrap = document.getElementById('heatmapWrap');
+  if(heatmapWrap && heatmapWrap.style.display !== 'none') renderHeatmap(false);
+}
+
 // Fire-and-forget — never blocks the tap that triggered it. Errors surface
 // as a status line in Settings, not an alert, so a dropped connection
 // doesn't interrupt catching.
 function pushCaughtIdToFirebase(id, isCaught){
-  if(!fbDb) return;
-  const p = ref(fbDb, `${FB_CAUGHT_PATH}/${id}`);
+  if(!fbDb || !currentUser) return;
+  const p = userRef(`caught/${id}`);
   (isCaught ? set(p, true) : remove(p)).catch(e=>{
     console.error('Firebase write failed for #'+id, e);
-    setSyncStatus("Sync error — this catch may not have reached your other device yet.", true);
+    setSyncStatus("Sync error — this catch may not have reached your other devices yet.", true);
   });
 }
 function pushFullCaughtToFirebase(){
-  if(!fbDb) return;
+  if(!fbDb || !currentUser) return;
   const obj = {};
   caughtIds.forEach(id=>{ obj[id] = true; });
-  set(ref(fbDb, FB_CAUGHT_PATH), obj).catch(e=>{
+  set(userRef('caught'), obj).catch(e=>{
     console.error('Firebase bulk write failed', e);
-    setSyncStatus("Sync error — imported data may not have reached your other device yet.", true);
+    setSyncStatus("Sync error — imported data may not have reached your other devices yet.", true);
   });
 }
 
-// Runs once on boot. First does a one-time GET and unions whatever's
-// already caught locally with whatever's already caught remotely (so the
-// very first sync on an existing device never wipes out prior progress in
-// either direction), pushes up anything the union added that Firebase
-// didn't have yet, then subscribes to live updates for everything after.
-async function firebaseInitialSync(){
-  if(!fbDb){ setSyncStatus('Not connected — using local copy only.', true); return; }
+function stopSyncListeners(){
+  if(stopCaughtListener){ stopCaughtListener(); stopCaughtListener = null; }
+  if(stopUsersListener){ stopUsersListener(); stopUsersListener = null; }
+}
+
+// Runs each time someone signs in (including automatically on boot when a
+// saved login exists). One-time GET unions what's cached locally with
+// what's already in this account (so an existing device's progress is never
+// wiped by a behind/empty remote), pushes up the difference, then
+// subscribes to live updates.
+async function startUserSync(user){
+  stopSyncListeners();
+  // The local cache belongs to whoever last signed in on this device. If a
+  // DIFFERENT person signs in, drop it rather than merging their catches
+  // into the wrong account. (No owner recorded = pre-login data from v5 or
+  // earlier, which the first person to sign in adopts.)
+  let owner = null;
+  try{ const r = await window.storage.get(CAUGHT_OWNER_KEY, false); if(r && r.value) owner = r.value; }catch(e){}
+  if(owner && owner !== user.uid){ caughtIds = new Set(); await saveCaughtLocal(); }
+  try{ await window.storage.set(CAUGHT_OWNER_KEY, user.uid, false); }catch(e){}
+  refreshAllViews();
+  updateAccountUI();
+
   setSyncStatus('Connecting…');
   try{
-    const snap = await get(ref(fbDb, FB_CAUGHT_PATH));
+    const profSnap = await get(userRef('profile'));
+    if(!profSnap.exists()){
+      const name = signupName || user.displayName || (user.email || 'Trainer').split('@')[0];
+      await set(userRef('profile'), { name, createdAt: Date.now() });
+    }
+    signupName = null;
+    const snap = await get(userRef('caught'));
     const remoteObj = snap.exists() ? snap.val() : {};
     const remoteIds = new Set(Object.keys(remoteObj).map(Number));
     const merged = new Set([...caughtIds, ...remoteIds]);
@@ -1225,37 +1382,198 @@ async function firebaseInitialSync(){
     merged.forEach(id=>{ if(!remoteIds.has(id)) toPush[id] = true; });
     caughtIds = merged;
     await saveCaughtLocal();
-    if(Object.keys(toPush).length){
-      await update(ref(fbDb, FB_CAUGHT_PATH), toPush);
-    }
-    render();
-    renderProgress();
-    const binderView = document.getElementById('binderView');
-    if(binderView && binderView.style.display !== 'none') renderBinderView();
+    if(Object.keys(toPush).length) await update(userRef('caught'), toPush);
+    refreshAllViews();
   }catch(e){
     console.error('Firebase initial sync failed — staying on local data only', e);
-    setSyncStatus("Couldn't reach the sync server — using local copy only.", true);
+    const blocked = e && (e.code === 'PERMISSION_DENIED' || /permission_denied/i.test(String(e.message)));
+    setSyncStatus(blocked
+      ? "Sync blocked by the database rules — check they allow signed-in users (see handoff)."
+      : "Couldn't reach the sync server — using local copy only.", true);
     return;
   }
-  onValue(ref(fbDb, FB_CAUGHT_PATH), snap=>{
+  stopCaughtListener = onValue(userRef('caught'), snap=>{
     const remoteObj = snap.exists() ? snap.val() : {};
     caughtIds = new Set(Object.keys(remoteObj).map(Number));
     saveCaughtLocal();
-    render();
-    renderProgress();
-    const binderView = document.getElementById('binderView');
-    if(binderView && binderView.style.display !== 'none') renderBinderView();
-    const heatmapWrap = document.getElementById('heatmapWrap');
-    if(heatmapWrap && heatmapWrap.style.display !== 'none') renderHeatmap(false);
+    refreshAllViews();
+    renderFriendsIfVisible();
   }, err=>{
     console.error('Firebase listener error', err);
     setSyncStatus('Sync connection dropped — using local copy until it reconnects.', true);
   });
-  onValue(ref(fbDb, '.info/connected'), snap=>{
-    setSyncStatus(snap.val() === true
-      ? 'Connected — synced across your devices.'
-      : 'Offline — using local copy, will sync when back online.', snap.val() !== true);
+  stopUsersListener = onValue(ref(fbDb, 'users'), snap=>{
+    usersData = snap.val() || {};
+    renderFriendsIfVisible();
+  }, err=>{ console.error('Friends listener error', err); });
+  if(!connListenerStarted){
+    connListenerStarted = true;
+    onValue(ref(fbDb, '.info/connected'), snap=>{
+      setSyncStatus(snap.val() === true
+        ? 'Connected — synced across all your devices.'
+        : 'Offline — using local copy, will sync when back online.', snap.val() !== true);
+    });
+  }
+}
+
+// Called once from loadIndex() after the local cache has loaded. Firebase
+// remembers a signed-in user across restarts, so after the first login this
+// fires straight away with the saved user — no login screen on later boots.
+function startAuth(){
+  if(!fbAuth){
+    setSyncStatus('Not connected — using local copy only.', true);
+    return;
+  }
+  onAuthStateChanged(fbAuth, user=>{
+    if(user){
+      currentUser = user;
+      hideAuthOverlay();
+      startUserSync(user);
+    }else{
+      currentUser = null;
+      stopSyncListeners();
+      usersData = {};
+      showAuthOverlay();
+      updateAccountUI();
+    }
   });
+}
+
+// --- Login / sign-up screen ---
+let authMode = 'signin'; // signin | signup
+function showAuthOverlay(){ document.getElementById('authOverlay').style.display = 'flex'; }
+function hideAuthOverlay(){ document.getElementById('authOverlay').style.display = 'none'; }
+function setAuthMode(mode){
+  authMode = mode;
+  const signup = mode === 'signup';
+  document.getElementById('authTitle').textContent = signup ? 'Create your account' : 'Sign in';
+  document.getElementById('authNameRow').style.display = signup ? 'block' : 'none';
+  document.getElementById('authSubmit').textContent = signup ? 'Create account' : 'Sign in';
+  document.getElementById('authSwitch').textContent = signup ? 'Already have an account? Sign in' : 'New here? Create an account';
+  document.getElementById('authForgot').style.display = signup ? 'none' : 'inline';
+  document.getElementById('authPassword').autocomplete = signup ? 'new-password' : 'current-password';
+  setAuthMessage('');
+}
+function setAuthMessage(text, isErr){
+  const el = document.getElementById('authMsg');
+  el.textContent = text;
+  el.className = 'status-line' + (isErr ? ' err' : '');
+}
+function authErrorText(e){
+  switch(e && e.code){
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found': return "That email and password don't match an account.";
+    case 'auth/email-already-in-use': return 'That email already has an account — try signing in.';
+    case 'auth/weak-password': return 'Password needs at least 6 characters.';
+    case 'auth/invalid-email': return "That email address doesn't look right.";
+    case 'auth/too-many-requests': return 'Too many attempts — wait a few minutes and try again.';
+    case 'auth/network-request-failed': return "Couldn't reach the server — check your connection.";
+    case 'auth/operation-not-allowed': return 'Email/password sign-in is not switched on in the Firebase console yet.';
+    default: return 'Something went wrong — ' + ((e && e.code) || 'unknown error');
+  }
+}
+document.getElementById('authSwitch').addEventListener('click', ()=> setAuthMode(authMode === 'signin' ? 'signup' : 'signin'));
+document.getElementById('authForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  if(!fbAuth){ setAuthMessage('Sign-in is unavailable right now.', true); return; }
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const btn = document.getElementById('authSubmit');
+  btn.disabled = true;
+  try{
+    if(authMode === 'signup'){
+      const name = document.getElementById('authName').value.trim();
+      if(name.length < 2 || name.length > 20){
+        setAuthMessage('Pick a display name between 2 and 20 characters.', true);
+        return;
+      }
+      signupName = name;
+      const cred = await createUserWithEmailAndPassword(fbAuth, email, password);
+      try{ await updateProfile(cred.user, { displayName: name }); }catch(err){ /* name also saved to the database profile */ }
+    }else{
+      await signInWithEmailAndPassword(fbAuth, email, password);
+    }
+    document.getElementById('authPassword').value = '';
+    setAuthMessage('');
+  }catch(err){
+    signupName = null;
+    console.error('auth failed', err);
+    setAuthMessage(authErrorText(err), true);
+  }finally{
+    btn.disabled = false;
+  }
+});
+document.getElementById('authForgot').addEventListener('click', async ()=>{
+  const email = document.getElementById('authEmail').value.trim();
+  if(!email){ setAuthMessage('Type your email above first, then tap "Forgot password?".', true); return; }
+  try{
+    await sendPasswordResetEmail(fbAuth, email);
+    setAuthMessage('Password reset email sent — check your inbox (and spam).');
+  }catch(err){
+    setAuthMessage(authErrorText(err), true);
+  }
+});
+
+// --- Account panel (Settings) ---
+function updateAccountUI(){
+  const nameEl = document.getElementById('accountName');
+  const mailEl = document.getElementById('accountEmail');
+  if(!nameEl) return;
+  if(!currentUser){ nameEl.textContent = 'Not signed in'; mailEl.textContent = ''; return; }
+  const prof = usersData[currentUser.uid] && usersData[currentUser.uid].profile;
+  nameEl.textContent = (prof && prof.name) || currentUser.displayName || 'Trainer';
+  mailEl.textContent = currentUser.email || '';
+}
+document.getElementById('signOutBtn').addEventListener('click', async ()=>{
+  if(!window.confirm('Sign out on this device? Your catches stay saved in your account.')) return;
+  try{
+    await signOut(fbAuth);
+    // Wipe this device's cache so the next person to sign in starts clean.
+    caughtIds = new Set();
+    await saveCaughtLocal();
+    try{ await window.storage.delete(CAUGHT_OWNER_KEY, false); }catch(e){}
+    refreshAllViews();
+  }catch(e){ console.error('sign out failed', e); }
+});
+
+// --- Friends tab: everyone's progress, live ---
+function renderFriendsIfVisible(){
+  const v = document.getElementById('friendsView');
+  if(v && v.style.display !== 'none') renderFriends();
+  updateAccountUI();
+}
+function renderFriends(){
+  const box = document.getElementById('friendsList');
+  if(!box) return;
+  if(!currentUser){ box.innerHTML = '<div class="loading">Sign in to see everyone\'s progress.</div>'; return; }
+  const rows = Object.keys(usersData).map(uid=>{
+    const u = usersData[uid] || {};
+    const ids = new Set(Object.keys(u.caught || {}).map(Number));
+    return { uid, name: (u.profile && u.profile.name) || 'Trainer', ids, count: ids.size, mine: uid === currentUser.uid };
+  }).sort((a,b)=> b.count - a.count || a.name.localeCompare(b.name));
+  if(!rows.length){ box.innerHTML = '<div class="loading">No trainers yet.</div>'; return; }
+  box.innerHTML = rows.map((r, i)=>{
+    const pct = (r.count / MAX_DEX * 100);
+    let compare = '';
+    if(!r.mine){
+      let theyHave = 0, iHave = 0;
+      r.ids.forEach(id=>{ if(!caughtIds.has(id)) theyHave++; });
+      caughtIds.forEach(id=>{ if(!r.ids.has(id)) iHave++; });
+      compare = `<div class="friend-compare">They have <b>${theyHave}</b> you're missing · you have <b>${iHave}</b> they're missing</div>`;
+    }
+    return `
+      <div class="friend-row${r.mine ? ' me' : ''}">
+        <div class="friend-top">
+          <span class="friend-rank">${i+1}</span>
+          <span class="friend-name">${escHtml(r.name)}${r.mine ? ' <i>(you)</i>' : ''}</span>
+          <span class="friend-count">${r.count} / ${MAX_DEX} · ${pct.toFixed(1)}%</span>
+        </div>
+        <div class="friend-bar"><div class="friend-bar-fill" style="width:${pct}%"></div></div>
+        ${compare}
+      </div>
+    `;
+  }).join('');
 }
 
 const STORAGE_KEY = 'pokedex-index-v1';
@@ -1558,7 +1876,7 @@ function titleCase(name){
 
 async function loadIndex(){
   await loadCaught();
-  firebaseInitialSync(); // not awaited — boots from local cache immediately, reconciles once connected
+  startAuth(); // not awaited — boots from local cache immediately; sign-in + sync happen in the background
   await loadSplashSourcePref();
   showBootSplash();
   try{
@@ -2499,6 +2817,8 @@ document.getElementById('viewTabs').addEventListener('click', e=>{
   document.getElementById('indexView').style.display = view === 'index' ? 'block' : 'none';
   document.getElementById('binderView').style.display = view === 'binder' ? 'block' : 'none';
   document.getElementById('settingsView').style.display = view === 'settings' ? 'block' : 'none';
+  document.getElementById('friendsView').style.display = view === 'friends' ? 'block' : 'none';
+  if(view === 'friends') renderFriends();
   if(view === 'binder') renderBinderView();
 });
 
