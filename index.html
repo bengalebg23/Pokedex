@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 6.4.0
+  VERSION: 6.5.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -233,6 +233,10 @@
            in Friends → Progress (tap a name to expand). Dual-type Pokémon
            count toward both of their types.
 
+  v6.5.0 — Friends → Pokémon: a small green ✓ now appears on any of a
+           friend's caught Pokémon that you have caught too, with a legend
+           under the filter buttons.
+
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
   "Data file" panel). Re-import that file after updating to a new version
@@ -265,7 +269,7 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v6.4.0
+**Current version:** v6.5.0
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
 **Main file:** `index.html` (single-file app, ~1,600 lines — HTML/CSS/JS all in one, including this handoff)
@@ -381,7 +385,8 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   the other trainers alphabetically (no counts or ranks); tap one to browse
   their Pokémon as a grid (Caught / Not caught / All, with search). Updates
   live. The cards have no tap handlers and the rules block writes to anyone
-  else's uid, so another person's list can't be changed from here. A second, low-key
+  else's uid, so another person's list can't be changed from here. Cards the viewer ALSO
+  has caught carry a small green ✓ badge (legend under the filter buttons). A second, low-key
   **Progress** sub-tab shows each person's caught/1025 as a thin bar (you
   first, then A–Z) — no ranking or comparisons, and the Pokémon tab is the
   default. Each person's row expands (tap the name) to the full breakdown:
@@ -678,6 +683,18 @@ yet under the new key, it's migrated once to "unlocked" automatically.
     padding:5px 4px;text-align:center;opacity:.45;
   }
   .fv-card.got{opacity:1;background:var(--panel);}
+  .fv-card{position:relative;}
+  .fv-both{
+    position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;
+    background:#4a7a3d;color:#fff;font-size:.62rem;font-weight:700;line-height:16px;text-align:center;
+    box-shadow:0 1px 3px rgba(0,0,0,.3);
+  }
+  .fv-legend{
+    display:flex;align-items:center;gap:8px;margin-top:10px;
+    font-size:.74rem;color:var(--ink-soft);
+  }
+  .fv-legend .fv-both-demo{position:static;flex-shrink:0;}
+
   .fv-card img{width:100%;aspect-ratio:1;object-fit:contain;display:block;}
   .fv-num{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--ink-soft);}
   .fv-name{font-size:.72rem;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;}
@@ -1083,7 +1100,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 </div>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v6.4.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v6.5.0</span></h1>
   </header>
 
   <div class="panel">
@@ -1346,7 +1363,7 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '6.4.0';
+const APP_VERSION = '6.5.0';
 // --- Firebase Auth + per-user sync (multi-device, multi-profile) ---
 // Each person signs in with email + password (Firebase Authentication).
 // Data model in the Realtime Database:
@@ -1719,6 +1736,7 @@ function renderFriends(){
           <button data-fv="missing">Not caught</button>
           <button data-fv="all">All</button>
         </div>
+        <div class="fv-legend"><span class="fv-both fv-both-demo">✓</span> you have this one too</div>
         <input class="search" id="fvSearch" placeholder="Search by name or number…" style="margin-top:10px;">
         <div class="fv-grid" id="fvGrid"></div>
       `;
@@ -1798,6 +1816,7 @@ function renderFriendGrid(){
   }
   grid.innerHTML = ids.map(i=>`
     <div class="fv-card${have.has(i) ? ' got' : ''}">
+      ${have.has(i) && caughtIds.has(i) ? '<span class="fv-both" title="You have this one too">✓</span>' : ''}
       <img loading="lazy" alt="${escHtml(names.get(i) || '')}"
         src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${i}.png"
         onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${i}.png';">
