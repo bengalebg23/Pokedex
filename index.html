@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 6.0.0
+  VERSION: 6.1.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -209,6 +209,11 @@
            Requires new database rules and Email/Password enabled in the
            Firebase console — see the Firebase section of the handoff.
 
+  v6.1.0 — Settings → Account now has a "Change display name" button, so
+           anyone can rename themselves (2–20 characters) without the
+           Firebase console. Writes users/<uid>/profile/name; the Friends tab
+           updates live.
+
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
   "Data file" panel). Re-import that file after updating to a new version
@@ -241,7 +246,7 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v6.0.0
+**Current version:** v6.1.0
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
 **Main file:** `index.html` (single-file app, ~1,600 lines — HTML/CSS/JS all in one, including this handoff)
@@ -468,6 +473,8 @@ yet under the new key, it's migrated once to "unlocked" automatically.
     Auth, per-account catch lists at `users/<uid>/caught`, display-name
     profiles, login/sign-up overlay, Settings → Account (sign out), and a
     👥 Friends leaderboard comparing everyone's progress.
+35. **Change display name (v6.1.0)** — Settings → Account button with an
+    inline editor; writes `users/<uid>/profile/name` (and the Auth profile).
 
 ## Known issues / lessons learned this build
 
@@ -1009,7 +1016,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 </div>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v6.0.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v6.1.0</span></h1>
   </header>
 
   <div class="panel">
@@ -1168,7 +1175,18 @@ yet under the new key, it's migrated once to "unlocked" automatically.
       <h2>Account</h2>
       <div class="account-name" id="accountName">Not signed in</div>
       <div class="status-line" id="accountEmail"></div>
-      <div style="margin-top:12px;"><button class="btn-data" id="signOutBtn">Sign out</button></div>
+      <div id="renameRow" style="display:none;margin-top:12px;">
+        <input class="search" id="renameInput" type="text" maxlength="20" placeholder="New display name" autocomplete="nickname">
+        <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
+          <button class="btn-data" id="renameSave">Save name</button>
+          <button class="btn-data" id="renameCancel">Cancel</button>
+        </div>
+        <div class="status-line" id="renameMsg"></div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn-data" id="renameBtn">Change display name</button>
+        <button class="btn-data" id="signOutBtn">Sign out</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -1257,7 +1275,7 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '6.0.0';
+const APP_VERSION = '6.1.0';
 // --- Firebase Auth + per-user sync (multi-device, multi-profile) ---
 // Each person signs in with email + password (Firebase Authentication).
 // Data model in the Realtime Database:
@@ -1525,6 +1543,52 @@ function updateAccountUI(){
   nameEl.textContent = (prof && prof.name) || currentUser.displayName || 'Trainer';
   mailEl.textContent = currentUser.email || '';
 }
+// Change display name: writes users/<uid>/profile/name (allowed by the rules
+// since it's the signed-in user's own uid) and mirrors it onto the Auth
+// profile. The Friends tab picks the change up live via its users listener.
+function setRenameMessage(text, isErr){
+  const el = document.getElementById('renameMsg');
+  el.textContent = text;
+  el.className = 'status-line' + (isErr ? ' err' : '');
+}
+function closeRenameRow(){
+  document.getElementById('renameRow').style.display = 'none';
+  document.getElementById('renameBtn').style.display = '';
+  setRenameMessage('');
+}
+document.getElementById('renameBtn').addEventListener('click', ()=>{
+  if(!currentUser){ return; }
+  document.getElementById('renameInput').value = document.getElementById('accountName').textContent;
+  document.getElementById('renameRow').style.display = 'block';
+  document.getElementById('renameBtn').style.display = 'none';
+  document.getElementById('renameInput').focus();
+});
+document.getElementById('renameCancel').addEventListener('click', closeRenameRow);
+document.getElementById('renameSave').addEventListener('click', async ()=>{
+  if(!fbDb || !currentUser) return;
+  const name = document.getElementById('renameInput').value.trim();
+  if(name.length < 2 || name.length > 20){
+    setRenameMessage('Pick a display name between 2 and 20 characters.', true);
+    return;
+  }
+  const btn = document.getElementById('renameSave');
+  btn.disabled = true;
+  try{
+    await set(userRef('profile/name'), name);
+    try{ await updateProfile(currentUser, { displayName: name }); }catch(e){ /* database name is the one the app shows */ }
+    if(!usersData[currentUser.uid]) usersData[currentUser.uid] = {};
+    usersData[currentUser.uid].profile = Object.assign({}, usersData[currentUser.uid].profile, { name });
+    updateAccountUI();
+    renderFriendsIfVisible();
+    closeRenameRow();
+  }catch(e){
+    console.error('rename failed', e);
+    setRenameMessage("Couldn't save the new name — check your connection and try again.", true);
+  }finally{
+    btn.disabled = false;
+  }
+});
+
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   if(!window.confirm('Sign out on this device? Your catches stay saved in your account.')) return;
   try{
