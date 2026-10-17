@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 6.3.0
+  VERSION: 6.4.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -227,6 +227,12 @@
            bars, you first then everyone A–Z, no ranking or comparisons).
            The Pokémon viewer remains the default view.
 
+  v6.4.0 — Progress in more ways. A shared breakdown (total, by region —
+           Kanto to Paldea — and by type, with bars in each type's colour)
+           now appears in the Species Index progress panel and, per person,
+           in Friends → Progress (tap a name to expand). Dual-type Pokémon
+           count toward both of their types.
+
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
   "Data file" panel). Re-import that file after updating to a new version
@@ -259,7 +265,7 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v6.3.0
+**Current version:** v6.4.0
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
 **Main file:** `index.html` (single-file app, ~1,600 lines — HTML/CSS/JS all in one, including this handoff)
@@ -378,7 +384,10 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   else's uid, so another person's list can't be changed from here. A second, low-key
   **Progress** sub-tab shows each person's caught/1025 as a thin bar (you
   first, then A–Z) — no ranking or comparisons, and the Pokémon tab is the
-  default.
+  default. Each person's row expands (tap the name) to the full breakdown:
+  total, by region (the 9 generations) and by type (18 types, bars in the type
+  colours; dual-types count toward both). The same breakdown now also sits in
+  the Species Index → Progress panel for your own list.
 - Settings → Account (name, email, sign out) and Settings → Sync (status
   via Firebase's `.info/connected`).
 
@@ -642,6 +651,19 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   .friend-pick:hover .friend-go{color:var(--stamp);}
   .friend-name{font-family:'Fraunces',serif;font-weight:700;font-size:1.05rem;min-width:0;overflow:hidden;text-overflow:ellipsis;}
   .friend-go{font-size:1.4rem;color:var(--ink-soft);}
+  .prog-h{
+    font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--ink-soft);margin:16px 0 8px;
+  }
+  .prog-hint{font-size:.76rem;color:var(--ink-soft);margin-bottom:6px;}
+  .prog-head{
+    display:flex;align-items:baseline;gap:10px;width:100%;padding:0;
+    background:none;border:none;cursor:pointer;text-align:left;color:var(--ink);
+  }
+  .prog-head .prog-name{flex:1;}
+  .prog-chev{font-size:1.1rem;color:var(--ink-soft);transition:transform .15s;}
+  .prog-chev.open{transform:rotate(90deg);}
+  .prog-detail{padding:2px 0 8px;}
   .prog-row{padding:9px 0;}
   .prog-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
   .prog-name{font-size:.92rem;font-weight:600;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;}
@@ -1061,7 +1083,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 </div>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v6.3.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v6.4.0</span></h1>
   </header>
 
   <div class="panel">
@@ -1324,7 +1346,7 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '6.3.0';
+const APP_VERSION = '6.4.0';
 // --- Firebase Auth + per-user sync (multi-device, multi-profile) ---
 // Each person signs in with email + password (Firebase Authentication).
 // Data model in the Realtime Database:
@@ -1720,25 +1742,33 @@ function renderFriends(){
 }
 // Progress tab: a quiet overview, deliberately low-key — no ranking, no
 // numbers-first layout, no comparisons. You first, then everyone else A–Z.
+let progOpen = new Set(); // uids whose breakdown is expanded
 function renderFriendProgress(){
   const box = document.getElementById('friendsProgress');
   if(!box) return;
   if(!currentUser){ box.innerHTML = '<div class="loading">Sign in to see your friends\' progress.</div>'; return; }
   const rows = Object.keys(usersData).map(uid=>{
     const u = usersData[uid] || {};
+    const ids = new Set(Object.keys(u.caught || {}).map(Number));
     return {
+      uid, ids,
       name: (u.profile && u.profile.name) || 'Trainer',
-      count: Object.keys(u.caught || {}).length,
       mine: uid === currentUser.uid
     };
   }).sort((a,b)=> (b.mine - a.mine) || a.name.localeCompare(b.name));
   if(!rows.length){ box.innerHTML = '<div class="loading">No trainers yet.</div>'; return; }
-  box.innerHTML = rows.map(r=>{
-    const pct = r.count / MAX_DEX * 100;
+  box.innerHTML = '<div class="prog-hint">Tap a name for the full breakdown by region and type.</div>' + rows.map(r=>{
+    const open = progOpen.has(r.uid);
+    const pct = r.ids.size / MAX_DEX * 100;
     return `
       <div class="prog-row">
-        <div class="prog-top"><span class="prog-name">${escHtml(r.name)}${r.mine ? ' <i>(you)</i>' : ''}</span><span class="prog-count">${r.count} / ${MAX_DEX}</span></div>
+        <button class="prog-head" data-progid="${escHtml(r.uid)}" aria-expanded="${open}">
+          <span class="prog-name">${escHtml(r.name)}${r.mine ? ' <i>(you)</i>' : ''}</span>
+          <span class="prog-count">${r.ids.size} / ${MAX_DEX}</span>
+          <span class="prog-chev${open ? ' open' : ''}">›</span>
+        </button>
         <div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div>
+        ${open ? `<div class="prog-detail">${breakdownHtml(r.ids)}</div>` : ''}
       </div>
     `;
   }).join('');
@@ -1782,6 +1812,13 @@ document.getElementById('friendsTabs').addEventListener('click', e=>{
   friendsTab = b.dataset.ftab;
   document.querySelectorAll('#friendsTabs button').forEach(x=>x.classList.toggle('active', x === b));
   renderFriends();
+});
+document.getElementById('friendsProgress').addEventListener('click', e=>{
+  const h = e.target.closest('[data-progid]');
+  if(!h) return;
+  const uid = h.dataset.progid;
+  if(progOpen.has(uid)) progOpen.delete(uid); else progOpen.add(uid);
+  renderFriendProgress();
 });
 document.getElementById('friendsList').addEventListener('click', e=>{
   const pick = e.target.closest('[data-viewuid]');
@@ -2204,11 +2241,51 @@ function fmtProgress(caught, total){
   return `${caught} of ${total}`;
 }
 
+// --- Progress breakdowns (shared by the Species Index panel and the
+// Friends → Progress tab). Any set of caught IDs in → total-by-region and
+// total-by-type bars out. A dual-type Pokémon counts toward BOTH its types,
+// so type totals add up to more than 1025 — that's expected.
+function progRowHtml(label, sub, caught, total, color){
+  const pct = total ? (caught/total*100) : 0;
+  return `
+    <div class="prow">
+      <div class="prow-top">
+        <span class="prow-label">${label}${sub ? `<span class="prow-sub">${sub}</span>` : ''}</span>
+        <span class="prow-val">${fmtProgress(caught, total)}</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%${color ? `;background:${color}` : ''}"></div></div>
+    </div>
+  `;
+}
+function progHeadingHtml(text){ return `<div class="prog-h">${text}</div>`; }
+function regionRowsHtml(idSet){
+  return GENERATIONS.map(g=>{
+    let caught = 0;
+    idSet.forEach(id=>{ if(id >= g.start && id <= g.end) caught++; });
+    return progRowHtml(g.name, `#${g.start}–${g.end}`, caught, g.end - g.start + 1);
+  }).join('');
+}
+function typeRowsHtml(idSet){
+  if(!allMons.length) return '<div class="status-line">Loading species data…</div>';
+  const typeOf = new Map(allMons.map(m=>[m.id, m.types]));
+  return Object.keys(TYPE_COLORS).map(t=>{
+    let total = 0, caught = 0;
+    typeOf.forEach((types, id)=>{
+      if(types.includes(t)){ total++; if(idSet.has(id)) caught++; }
+    });
+    if(!total) return '';
+    return progRowHtml(t.charAt(0).toUpperCase() + t.slice(1), '', caught, total, TYPE_COLORS[t]);
+  }).join('');
+}
+function breakdownHtml(idSet){
+  return progHeadingHtml('By region') + regionRowsHtml(idSet) +
+         progHeadingHtml('By type') + typeRowsHtml(idSet);
+}
+
 function renderProgress(){
   const wrap = document.getElementById('progressWrap');
   const overallCaught = caughtIds.size;
-
-  let rows = `
+  wrap.innerHTML = `
     <div class="prow overall">
       <div class="prow-top">
         <span class="prow-label">All Pokémon</span>
@@ -2216,23 +2293,7 @@ function renderProgress(){
       </div>
       <div class="bar-track"><div class="bar-fill" style="width:${(overallCaught/MAX_DEX*100)}%"></div></div>
     </div>
-  `;
-
-  GENERATIONS.forEach(g=>{
-    const total = g.end - g.start + 1;
-    const caught = [...caughtIds].filter(id => id >= g.start && id <= g.end).length;
-    rows += `
-      <div class="prow">
-        <div class="prow-top">
-          <span class="prow-label">${g.name}<span class="prow-sub">#${g.start}–${g.end}</span></span>
-          <span class="prow-val">${fmtProgress(caught, total)}</span>
-        </div>
-        <div class="bar-track"><div class="bar-fill" style="width:${(caught/total*100)}%"></div></div>
-      </div>
-    `;
-  });
-
-  wrap.innerHTML = rows;
+  ` + breakdownHtml(caughtIds);
 }
 
 function render(){
