@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 6.1.0
+  VERSION: 6.1.1
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -214,6 +214,10 @@
            Firebase console. Writes users/<uid>/profile/name; the Friends tab
            updates live.
 
+  v6.1.1 — Handoff notes only: deployment now happens by Claude pushing to
+           GitHub from chat (Termux retired); checklist and lessons updated.
+           No app behaviour changes.
+
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
   "Data file" panel). Re-import that file after updating to a new version
@@ -246,7 +250,7 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v6.1.0
+**Current version:** v6.1.1
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
 **Main file:** `index.html` (single-file app, ~1,600 lines — HTML/CSS/JS all in one, including this handoff)
@@ -491,10 +495,20 @@ yet under the new key, it's migrated once to "unlocked" automatically.
     (`pokedex-v3.2.0.html`, not always `pokedex-list.html`)
   - Habit of `grep -m1 "VERSION:" index.html` after every `cp`, before
     committing, to confirm the right file landed
-- Termux workflow confirmed working: `git clone` once, then
-  `cp` → `grep VERSION` check → `git add -A` → `git commit` → `git push`
-  each update. Auth via Personal Access Token (classic, `repo` scope),
-  cached with `git config --global credential.helper store`.
+- **Deployment (current, since v6.0.0):** Claude pushes straight to the
+  GitHub repo from the chat session — no Termux. When asked, Claude attaches
+  the repo to the session with push access (the GitHub repo tool), makes ONE
+  shallow clone, copies the new file in as `index.html`, checks
+  `grep -m1 "VERSION:" index.html`, commits with the version number and a
+  short description, and pushes to `main`. GitHub Pages then rebuilds in a
+  minute or two. This only works when GitHub access is available in the
+  session; if it isn't, Claude hands over the versioned file instead.
+- **Legacy Termux workflow (retired by Ben, Oct 2026):** `git clone` once, then
+  `cp` → `grep VERSION` check → `git add -A` → `git commit` → `git push`,
+  with a Personal Access Token. If that old clone is ever used again it will
+  be BEHIND GitHub — run `git pull` first or it will overwrite newer work.
+  Lesson from it: run `git push` as its own command (typing it into the merge
+  message editor once left a merge unpushed and GitHub on an old version).
 - **Standing rule from here on:** the embedded handoff comment in
   `index.html` is edited (not regenerated from scratch) as part of every
   version bump — new feature added to the history list, version bumped
@@ -555,8 +569,11 @@ yet under the new key, it's migrated once to "unlocked" automatically.
    `index.html`) — add the new feature to the history list, bump the
    version at the top, note anything newly open/resolved
 6. Save/export the file with the version number in the filename
-7. Termux: `cp` in → `grep VERSION` sanity check → commit with the
-   version number and a short description → push
+7. Push to `main` (Claude does this from chat when GitHub access is
+   available): copy the file in as `index.html` → `grep -m1 "VERSION:"`
+   sanity check → commit with the version number and a short description →
+   push. Then wait a minute or two for GitHub Pages and force-close/reopen
+   the app on each device to pick up the new version.
 
 ============================================================
      END HANDOFF DOCUMENT
@@ -1016,7 +1033,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 </div>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v6.1.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v6.1.1</span></h1>
   </header>
 
   <div class="panel">
@@ -1275,7 +1292,7 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '6.1.0';
+const APP_VERSION = '6.1.1';
 // --- Firebase Auth + per-user sync (multi-device, multi-profile) ---
 // Each person signs in with email + password (Firebase Authentication).
 // Data model in the Realtime Database:
