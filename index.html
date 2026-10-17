@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   The Full Index — National Pokédex tracker
-  VERSION: 6.6.0
+  VERSION: 6.7.0
 
   Changelog:
   v1.0.0 — Full species index with type and number-range filters
@@ -242,6 +242,11 @@
            covers the Species Index progress panel and the Friends →
            Progress breakdowns, and it is remembered (pokedex-prog-sections-v1).
 
+  v6.7.0 — The region/type show/hide headings now look like real buttons
+           (bordered, with a "Show ▾" / "Hide ▴" label), and both sections
+           start collapsed by default. Storage key bumped to
+           pokedex-prog-sections-v2 so everyone starts collapsed.
+
   Data note: caught progress and the species cache are stored in this app's
   local storage AND can be exported to a standalone .txt file (see the
   "Data file" panel). Re-import that file after updating to a new version
@@ -274,7 +279,7 @@ Attach `index.html` itself and paste this to pick up where we left off:
 
 ---
 
-**Current version:** v6.6.0
+**Current version:** v6.7.0
 **Repo:** https://github.com/bengalebg23/Pokedex (public)
 **Live URL:** https://bengalebg23.github.io/Pokedex/
 **Main file:** `index.html` (single-file app, ~1,600 lines — HTML/CSS/JS all in one, including this handoff)
@@ -410,7 +415,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   the old `pokedex-mode-v1` ("Catching Mode"/"Discovery Mode"), which is
   still read once as a migration fallback if `pokedex-lock-v1` isn't set yet.
 - `pokedex-splash-source-v1` — boot splash pool ('all' | 'caught' | 'uncaught').
-- `pokedex-prog-sections-v1` — which progress sections (region/type) are shown.
+- `pokedex-prog-sections-v2` — which progress sections (region/type) are shown (default: both collapsed).
 
 ### Data portability
 - Export/Import buttons produce a `.txt` (JSON inside) file with caught
@@ -668,9 +673,12 @@ yet under the new key, it's migrated once to "unlocked" automatically.
   }
   .prog-h-btn{
     display:flex;align-items:center;justify-content:space-between;width:100%;
-    background:none;border:none;padding:0;cursor:pointer;
+    margin:12px 0 8px;padding:9px 12px;cursor:pointer;
+    background:var(--paper);border:1px solid var(--line);border-radius:6px;
+    font-family:'Fraunces',serif;font-weight:700;font-size:.9rem;color:var(--ink);
   }
-  .prog-h-btn:hover{color:var(--ink);}
+  .prog-h-btn:hover{border-color:var(--stamp);}
+  .prog-toggle{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:.7rem;color:var(--stamp);}
   .prog-hint{font-size:.76rem;color:var(--ink-soft);margin-bottom:6px;}
   .prog-head{
     display:flex;align-items:baseline;gap:10px;width:100%;padding:0;
@@ -1111,7 +1119,7 @@ yet under the new key, it's migrated once to "unlocked" automatically.
 </div>
 <div class="wrap">
   <header>
-    <h1>The Full Index<span>every known species, sortable and searchable · v6.6.0</span></h1>
+    <h1>The Full Index<span>every known species, sortable and searchable · v6.7.0</span></h1>
   </header>
 
   <div class="panel">
@@ -1374,7 +1382,7 @@ const TYPE_COLORS = {
   dark:'#705746', steel:'#B7B7CE', fairy:'#D685AD'
 };
 const MAX_DEX = 1025;
-const APP_VERSION = '6.6.0';
+const APP_VERSION = '6.7.0';
 // --- Firebase Auth + per-user sync (multi-device, multi-profile) ---
 // Each person signs in with email + password (Firebase Authentication).
 // Data model in the Realtime Database:
@@ -2291,8 +2299,8 @@ function progRowHtml(label, sub, caught, total, color){
 // "By region" / "By type" headings double as show/hide buttons. The choice is
 // shared by the Species Index panel and every Friends → Progress breakdown,
 // and remembered between visits.
-const PROG_SECTIONS_KEY = 'pokedex-prog-sections-v1';
-let progSections = { region:true, type:true };
+const PROG_SECTIONS_KEY = 'pokedex-prog-sections-v2'; // v2: default flipped to collapsed
+let progSections = { region:false, type:false };
 async function loadProgSections(){
   try{
     const res = await window.storage.get(PROG_SECTIONS_KEY, false);
@@ -2301,11 +2309,11 @@ async function loadProgSections(){
       if(typeof v.region === 'boolean') progSections.region = v.region;
       if(typeof v.type === 'boolean') progSections.type = v.type;
     }
-  }catch(e){ /* default: both shown */ }
+  }catch(e){ /* default: both collapsed */ }
 }
 function progHeadingHtml(text, sec){
   const open = progSections[sec];
-  return `<button class="prog-h prog-h-btn" data-progsec="${sec}" aria-expanded="${open}">${text}<span class="prog-chev${open ? ' open' : ''}">›</span></button>`;
+  return `<button class="prog-h-btn" data-progsec="${sec}" aria-expanded="${open}"><span>${text}</span><span class="prog-toggle">${open ? 'Hide ▴' : 'Show ▾'}</span></button>`;
 }
 function regionRowsHtml(idSet){
   return GENERATIONS.map(g=>{
